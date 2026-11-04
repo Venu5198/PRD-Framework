@@ -25,3 +25,4 @@ class ClarificationSession(BaseModel):
     status: str = Field(default="pending", description="'pending', 'in_progress', 'completed'")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+

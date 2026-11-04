@@ -24,12 +24,21 @@ class DatabaseManager:
             self.db = self.client[settings.MONGODB_DB_NAME]
             self.is_mock = False
             logger.info(f"Connected to live MongoDB database: {settings.MONGODB_DB_NAME}")
+            
+            # Initialize indexes
+            from app.db.indexes import initialize_database_indexes
+            await initialize_database_indexes(self.db)
         except Exception as e:
             logger.info(f"Using in-memory AsyncMongoMockClient database ({e}).")
             from mongomock_motor import AsyncMongoMockClient
             self.client = AsyncMongoMockClient()
             self.db = self.client[settings.MONGODB_DB_NAME]
             self.is_mock = True
+            try:
+                from app.db.indexes import initialize_database_indexes
+                await initialize_database_indexes(self.db)
+            except Exception:
+                pass
 
     async def close(self):
         if self.client:

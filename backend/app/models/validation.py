@@ -22,3 +22,4 @@ class ValidationReport(BaseModel):
     info_count: int
     issues: List[ValidationIssue] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+

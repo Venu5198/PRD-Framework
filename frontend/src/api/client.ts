@@ -16,16 +16,24 @@ class ApiClient {
 
   setToken(token: string | null) {
     this.token = token;
-    if (token) {
-      localStorage.setItem('auth_token', token);
-    } else {
-      localStorage.removeItem('auth_token');
-    }
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        if (token) {
+          window.localStorage.setItem('auth_token', token);
+        } else {
+          window.localStorage.removeItem('auth_token');
+        }
+      }
+    } catch (_) {}
   }
 
   getToken(): string | null {
     if (!this.token) {
-      this.token = localStorage.getItem('auth_token');
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          this.token = window.localStorage.getItem('auth_token');
+        }
+      } catch (_) {}
     }
     return this.token;
   }
@@ -242,3 +250,4 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
+

@@ -23,3 +23,4 @@ class AIGatewayInterface(ABC):
     async def is_available(self) -> bool:
         """Check if AI provider is reachable."""
         pass
+

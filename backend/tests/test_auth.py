@@ -15,3 +15,4 @@ def test_jwt_token_flow():
     payload = decode_access_token(token)
     assert payload is not None
     assert payload.get("sub") == user_id
+

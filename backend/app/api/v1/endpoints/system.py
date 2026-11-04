@@ -40,3 +40,4 @@ async def select_model(payload: dict):
         return {"error": "Model name required"}
     settings.DEFAULT_MODEL = new_model
     return {"status": "success", "active_model": settings.DEFAULT_MODEL}
+

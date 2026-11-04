@@ -150,3 +150,4 @@ export const SettingsPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     </div>
   );
 };
+

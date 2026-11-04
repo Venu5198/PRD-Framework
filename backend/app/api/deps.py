@@ -71,18 +71,25 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme),
     user_repo: UserRepository = Depends(get_user_repo)
 ) -> dict:
-    # If no token provided, allow default local developer session
     if not token:
-        dev_user = await user_repo.get_by_username("local_engineer")
-        if not dev_user:
-            dev_user = await user_repo.create({
-                "username": "local_engineer",
-                "email": "engineer@local.dev",
-                "full_name": "Local Lead Engineer",
-                "role": "lead_engineer",
-                "hashed_password": "local_dev_user"
-            })
-        return dev_user
+        from app.core.config import settings
+        if settings.ALLOW_DEV_AUTO_AUTH:
+            dev_user = await user_repo.get_by_username("local_engineer")
+            if not dev_user:
+                dev_user = await user_repo.create({
+                    "username": "local_engineer",
+                    "email": "engineer@local.dev",
+                    "full_name": "Local Lead Engineer",
+                    "role": "lead_engineer",
+                    "hashed_password": "local_dev_user"
+                })
+            return dev_user
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated. Provide Bearer token in Authorization header.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     payload = decode_access_token(token)
     if not payload or not payload.get("sub"):
@@ -95,3 +102,4 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+

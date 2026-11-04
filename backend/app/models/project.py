@@ -22,3 +22,4 @@ class ProjectResponse(ProjectBase):
     active_prd_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+

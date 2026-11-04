@@ -1007,3 +1007,4 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
     </div>
   );
 };
+

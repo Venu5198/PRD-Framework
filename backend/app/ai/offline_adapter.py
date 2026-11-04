@@ -49,6 +49,16 @@ class OfflineMockAdapter(AIGatewayInterface):
                 }
             })
 
+        # 1b. Assignment Parser stage
+        if "assignment parser" in prompt_lower or "assignment instructions" in prompt_lower:
+            return json.dumps({
+                "instruction_summary": "Comprehensive PRD conforming to software engineering standards",
+                "mandatory_sections": ["Executive Summary", "Functional Requirements", "Non-Functional Requirements", "Security"],
+                "deliverables": ["PRD Specification", "Traceability Matrix", "Architecture Diagram"],
+                "constraints": ["Zero cloud data transmission", "Deterministic quality checks"],
+                "expected_length": "Comprehensive"
+            })
+
         # 2. Clarification stage
         if "principal technical product manager" in prompt_lower or "clarification questions are necessary" in prompt_lower:
             return json.dumps({

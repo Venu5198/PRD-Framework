@@ -172,3 +172,4 @@ class ValidationService:
         report.id = saved["id"]
 
         return report
+

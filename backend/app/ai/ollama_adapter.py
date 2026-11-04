@@ -63,3 +63,4 @@ class OllamaAdapter(AIGatewayInterface):
             except httpx.HTTPError as err:
                 logger.error(f"Ollama generation failed: {err}")
                 raise RuntimeError(f"Ollama generation error: {err}") from err
+

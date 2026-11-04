@@ -125,3 +125,4 @@ class ValidationRepository(BaseRepository):
 class GenerationRunRepository(BaseRepository):
     def __init__(self):
         super().__init__("generation_runs")
+

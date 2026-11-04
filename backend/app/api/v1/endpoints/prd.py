@@ -110,3 +110,4 @@ async def approve_version(
         return await prd_service.approve_version(project_id, version_id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+

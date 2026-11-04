@@ -40,3 +40,4 @@ def test_export_all_formats(tmp_path: Path):
     pdf_path = export_svc.export_pdf(ver, "Sample Framework")
     assert pdf_path.exists()
     assert pdf_path.stat().st_size > 1000
+

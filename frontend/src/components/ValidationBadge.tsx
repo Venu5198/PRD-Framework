@@ -46,3 +46,4 @@ export const ValidationBadge: React.FC<{ report: ValidationReport | null }> = ({
     </div>
   );
 };
+

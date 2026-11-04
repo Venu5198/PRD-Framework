@@ -10,10 +10,22 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     
-    # Security
+    # Security & Auth
     SECRET_KEY: str = os.getenv("SECRET_KEY", "local-development-secret-key-change-in-prod-1234567890")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    ALLOW_DEV_AUTO_AUTH: bool = os.getenv("ALLOW_DEV_AUTO_AUTH", "false").lower() in ("true", "1", "yes")
+
+    # File Upload Security Limits
+    MAX_UPLOAD_SIZE_BYTES: int = 15 * 1024 * 1024  # 15 MB
+    ALLOWED_EXTENSIONS: List[str] = [".pdf", ".txt", ".md", ".docx"]
+    ALLOWED_MIME_TYPES: List[str] = [
+        "application/pdf",
+        "text/plain",
+        "text/markdown",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/octet-stream"
+    ]
     
     # MongoDB
     MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")

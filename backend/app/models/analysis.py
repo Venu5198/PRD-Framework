@@ -29,3 +29,4 @@ class AnalysisRecord(BaseModel):
     assumptions: List[str] = Field(default_factory=list)
     assignment_requirements: Optional[AssignmentRequirement] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+

@@ -105,3 +105,4 @@ class SectionUpdatePayload(BaseModel):
 
 class SectionRegeneratePayload(BaseModel):
     guidance: Optional[str] = Field(default=None, description="Optional extra prompt/guidance for regeneration")
+

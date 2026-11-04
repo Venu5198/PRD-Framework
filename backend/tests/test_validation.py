@@ -59,3 +59,4 @@ async def test_validation_duplicate_and_unmapped_fr():
     report = await svc.validate_version(ver)
     assert any(i.rule_id == "VAL-REQ-001" for i in report.issues)  # duplicate FR
     assert any(i.rule_id == "VAL-AC-001" for i in report.issues)   # unmapped FR-002
+

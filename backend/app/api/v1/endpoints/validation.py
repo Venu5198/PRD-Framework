@@ -48,3 +48,4 @@ async def get_latest_report(
         raise HTTPException(status_code=404, detail="No validation report generated for this version.")
 
     return ValidationReport(**report)
+

@@ -149,3 +149,4 @@ The pipeline operates in explicit stages to prevent context overflows and halluc
 - **Step 4:** Deterministic Validation Engine & Quality reporting.
 - **Step 5:** React + Vite + Tailwind Frontend with full workflow UI.
 - **Step 6:** Docker Compose, unit tests, integration tests, end-to-end verification.
+

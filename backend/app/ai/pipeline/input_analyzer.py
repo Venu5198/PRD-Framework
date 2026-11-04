@@ -105,3 +105,4 @@ class InputAnalyzer:
                 facts=[submission.raw_idea[:120]],
                 assumptions=["Standard desktop deployment environment"]
             )
+

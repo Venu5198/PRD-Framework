@@ -251,3 +251,4 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectProject }) => {
     </div>
   );
 };
+

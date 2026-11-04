@@ -21,3 +21,4 @@ class IdeaSubmissionResponse(BaseModel):
     technical_constraints: Optional[str] = None
     file_attachments: List[str] = Field(default_factory=list)
     created_at: datetime
+

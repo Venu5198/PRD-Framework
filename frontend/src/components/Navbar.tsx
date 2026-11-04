@@ -88,3 +88,4 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
     </header>
   );
 };
+

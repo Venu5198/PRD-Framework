@@ -23,9 +23,15 @@ from app.models.submission import IdeaSubmissionResponse
 from app.models.analysis import AnalysisRecord
 from app.ai.factory import get_ai_gateway
 from app.ai.pipeline.input_analyzer import InputAnalyzer
+from app.ai.pipeline.assignment_parser import AssignmentParser, AssignmentParserInput
+from app.ai.pipeline.problem_analyst import ProblemAnalyst, ProblemAnalystInput
 from app.ai.pipeline.clarification_engine import ClarificationEngine
+from app.ai.pipeline.stakeholder_analyst import StakeholderAnalyst, StakeholderAnalystInput
 from app.ai.pipeline.requirement_engineer import RequirementEngineer
+from app.ai.pipeline.business_rules_analyst import BusinessRulesAnalyst, BusinessRulesInput
+from app.ai.pipeline.risk_analyst import RiskAnalyst, RiskAnalystInput
 from app.ai.pipeline.prd_generator import PRDGenerator
+from app.ai.pipeline.prd_validator import PRDValidator, PRDValidatorInput
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +66,29 @@ class PRDService:
         
         start_t = time.time()
         analysis = await analyzer.analyze(latest_sub)
+        
+        # Invoke AssignmentParser if assignment context is provided
+        if latest_sub.assignment_context:
+            asg_parser = AssignmentParser(ai_gw)
+            asg_res = await asg_parser.parse(AssignmentParserInput(assignment_text=latest_sub.assignment_context))
+            from app.models.analysis import AssignmentRequirement
+            analysis.assignment_requirements = AssignmentRequirement(
+                instruction=asg_res.instruction_summary,
+                mandatory_sections=asg_res.mandatory_sections,
+                deliverables=asg_res.deliverables,
+                constraints=asg_res.constraints,
+                expected_length=asg_res.expected_length
+            )
+
+        # Invoke ProblemAnalyst to deepen problem domain & root pain points
+        prob_analyst = ProblemAnalyst(ai_gw)
+        prob_res = await prob_analyst.analyze(ProblemAnalystInput(
+            concept=latest_sub.raw_idea,
+            problem_statement=latest_sub.problem_statement
+        ))
+        if prob_res.problem_domain and prob_res.problem_domain != "Software Architecture":
+            analysis.problem_domain = prob_res.problem_domain
+
         duration = time.time() - start_t
 
         # Persist analysis
@@ -139,6 +168,40 @@ class PRDService:
 
         start_time = time.time()
         requirements_data = await req_engineer.engineer(analysis, clarification_session)
+
+        # 5. Stakeholder Analyst
+        stakeholder_analyst = StakeholderAnalyst(ai_gw)
+        sh_res = await stakeholder_analyst.analyze(StakeholderAnalystInput(
+            product_category=analysis.product_category,
+            intended_users=analysis.intended_users,
+            domain=analysis.problem_domain
+        ))
+        requirements_data["stakeholders"] = [p.dict() for p in sh_res.personas]
+        requirements_data["user_journeys"] = [j.dict() for j in sh_res.user_journeys]
+
+        # 7. Business Rules Analyst
+        br_analyst = BusinessRulesAnalyst(ai_gw)
+        br_res = await br_analyst.extract_rules(BusinessRulesInput(
+            domain=analysis.problem_domain,
+            objectives=analysis.core_objectives,
+            constraints=analysis.explicit_constraints
+        ))
+        # Merge or ensure business rules are fully populated
+        existing_br_ids = {b.get("id") for b in requirements_data.get("business_rules", [])}
+        for br in br_res.business_rules:
+            if br.id not in existing_br_ids:
+                requirements_data.setdefault("business_rules", []).append(br.dict())
+
+        # 8. Risk Analyst
+        risk_analyst = RiskAnalyst(ai_gw)
+        risk_res = await risk_analyst.analyze_risks(RiskAnalystInput(
+            problem_domain=analysis.problem_domain,
+            capabilities=analysis.expected_capabilities,
+            constraints=analysis.explicit_constraints
+        ))
+        requirements_data["risks"] = [r.dict() for r in risk_res.risks]
+
+        # 9. PRD Generator
         sections = await generator.generate_full_prd(
             project_title=project.get("title", "Project"),
             analysis=analysis,
@@ -298,3 +361,4 @@ class PRDService:
             "changelog": f"{ver_doc.get('changelog', '')} [APPROVED]"
         })
         return PRDVersion(**updated)
+

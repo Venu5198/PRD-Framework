@@ -112,3 +112,4 @@ This executes:
 - **Zero Cloud Leakage:** All data and prompts remain strictly on local storage (`/data/`).
 - **Telemetry Free:** No external third-party telemetry, tracking, or mandatory API keys.
 - **Offline Fallback Engine:** If the Ollama daemon is offline or downloading models, the system seamlessly uses the local deterministic offline engine.
+

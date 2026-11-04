@@ -84,3 +84,4 @@ async def test_requirement_engineer_and_prd_assembly():
     for key in CANONICAL_SECTIONS:
         assert key in sections
         assert len(sections[key].content) > 10
+
