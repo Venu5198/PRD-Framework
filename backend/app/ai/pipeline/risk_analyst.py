@@ -65,3 +65,4 @@ class RiskAnalyst:
             )
         ]
         return RiskAnalystOutput(risks=risks)
+

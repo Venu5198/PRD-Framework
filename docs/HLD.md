@@ -54,3 +54,4 @@ graph TD
 4. **Synthesis Flow:** `RequirementEngineer`, `StakeholderAnalyst`, `BusinessRulesAnalyst`, and `RiskAnalyst` produce structured requirements -> `PRDGenerator` synthesizes all 27 canonical sections -> stored as immutable `PRDVersion`.
 5. **Quality Gate Flow:** `ValidationService` runs deterministic structural and semantic checks -> reports score (0-100) and actionable remediation findings.
 6. **Export Flow:** `ExportService` compiles version sections into `.md`, `.docx`, or `.pdf` on the local filesystem.
+

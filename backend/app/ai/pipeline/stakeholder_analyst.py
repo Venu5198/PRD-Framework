@@ -62,3 +62,4 @@ class StakeholderAnalyst:
             )
         ]
         return StakeholderAnalystOutput(personas=personas, user_journeys=journeys)
+

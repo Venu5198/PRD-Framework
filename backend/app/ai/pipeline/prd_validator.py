@@ -24,3 +24,4 @@ class PRDValidator:
     async def validate(self, input_data: PRDValidatorInput) -> PRDValidatorOutput:
         report = await self.validation_service.validate_version(input_data.version)
         return PRDValidatorOutput(report=report)
+

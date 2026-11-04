@@ -85,3 +85,4 @@ async def initialize_database_indexes(db: AsyncIOMotorDatabase):
     ])
 
     logger.info("MongoDB index initialization successfully completed.")
+

@@ -63,3 +63,4 @@ async def test_risk_analyst():
     res = await analyst.analyze_risks(inp)
     assert len(res.risks) >= 3
     assert any(r.id == "RSK-001" for r in res.risks)
+

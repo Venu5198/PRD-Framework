@@ -19,3 +19,4 @@ describe('ApiClient Unit Tests', () => {
     expect(api.getToken()).toBeNull();
   });
 });
+

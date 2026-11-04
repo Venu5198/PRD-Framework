@@ -82,3 +82,4 @@ npm run build
 
 - When running in an offline environment or continuous integration pipeline where Ollama daemon is offline, the `OfflineMockAdapter` executes deterministic responses that mirror model outputs, allowing tests to run instantaneously and reliably without GPU requirements.
 - When running live against a local Ollama daemon, `OllamaAdapter` interacts with `http://localhost:11434/api/generate`.
+

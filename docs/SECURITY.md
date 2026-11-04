@@ -50,3 +50,4 @@ The automated security regression test suite `backend/tests/test_security.py` te
   - Empty files rejected with HTTP 400.
   - `../../etc/passwd.txt` path traversal sanitized safely.
 - `test_security_duplicate_username_enforcement`: Confirms duplicate registrations are rejected with HTTP 400.
+

@@ -47,3 +47,4 @@ describe('ValidationBadge Component', () => {
     expect(screen.getByText('2 Warnings')).toBeInTheDocument();
   });
 });
+

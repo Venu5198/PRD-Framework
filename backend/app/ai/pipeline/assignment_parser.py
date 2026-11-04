@@ -82,3 +82,4 @@ class AssignmentParser:
                 deliverables=["PRD Export in Markdown, DOCX, and PDF"],
                 constraints=["Local execution"]
             )
+

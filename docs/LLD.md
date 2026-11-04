@@ -99,3 +99,4 @@ sequenceDiagram
 - **Markdown (`export_markdown`):** Compiles title, metadata header, changelog, and sequential Markdown sections with formatted tables and Mermaid blocks.
 - **DOCX (`export_docx`):** Uses `python-docx` to construct styled headings, center-aligned title blocks, and OpenXML data tables (`Light Shading Accent 1` style).
 - **PDF (`export_pdf`):** Uses `reportlab.platypus.SimpleDocTemplate` to render formatted paragraphs, metadata headers, running headers, and page margins.
+

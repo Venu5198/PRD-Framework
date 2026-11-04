@@ -45,3 +45,4 @@ class BusinessRulesAnalyst:
             )
         ]
         return BusinessRulesOutput(business_rules=rules)
+
