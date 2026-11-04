@@ -1,0 +1,244 @@
+import {
+  User,
+  Project,
+  Submission,
+  AnalysisRecord,
+  ClarificationSession,
+  PRDVersion,
+  ValidationReport,
+  SystemHealth
+} from '../types';
+
+const API_BASE = '/api/v1';
+
+class ApiClient {
+  private token: string | null = null;
+
+  setToken(token: string | null) {
+    this.token = token;
+    if (token) {
+      localStorage.setItem('auth_token', token);
+    } else {
+      localStorage.removeItem('auth_token');
+    }
+  }
+
+  getToken(): string | null {
+    if (!this.token) {
+      this.token = localStorage.getItem('auth_token');
+    }
+    return this.token;
+  }
+
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const headers = new Headers(options.headers || {});
+    const token = this.getToken();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+      headers.set('Content-Type', 'application/json');
+    }
+
+    const res = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers
+    });
+
+    if (!res.ok) {
+      let errorMsg = `HTTP Error ${res.status}`;
+      try {
+        const errJson = await res.json();
+        errorMsg = errJson.detail || errorMsg;
+      } catch (_) {}
+      throw new Error(errorMsg);
+    }
+
+    return res.json();
+  }
+
+  // System
+  async getHealth(): Promise<SystemHealth> {
+    return this.request<SystemHealth>('/system/health');
+  }
+
+  async getModels(): Promise<{ active_model: string; available_models: any[] }> {
+    return this.request('/system/models');
+  }
+
+  async selectModel(model: string): Promise<any> {
+    return this.request('/system/models/select', {
+      method: 'POST',
+      body: JSON.stringify({ model })
+    });
+  }
+
+  // Auth
+  async login(username: string, password: string): Promise<{ access_token: string }> {
+    const res = await this.request<{ access_token: string }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password })
+    });
+    this.setToken(res.access_token);
+    return res;
+  }
+
+  async register(username: string, email: string, password: string, fullName?: string): Promise<User> {
+    return this.request<User>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, email, password, full_name: fullName })
+    });
+  }
+
+  async getMe(): Promise<User> {
+    return this.request<User>('/auth/me');
+  }
+
+  // Projects
+  async getProjects(): Promise<Project[]> {
+    return this.request<Project[]>('/projects');
+  }
+
+  async createProject(title: string, description?: string, targetDomain?: string): Promise<Project> {
+    return this.request<Project>('/projects', {
+      method: 'POST',
+      body: JSON.stringify({ title, description, target_domain: targetDomain })
+    });
+  }
+
+  async getProject(projectId: string): Promise<Project> {
+    return this.request<Project>(`/projects/${projectId}`);
+  }
+
+  // Submissions
+  async submitIdea(
+    projectId: string,
+    submissionType: string,
+    rawIdea: string,
+    problemStatement?: string,
+    assignmentContext?: string
+  ): Promise<Submission> {
+    return this.request<Submission>(`/projects/${projectId}/submissions`, {
+      method: 'POST',
+      body: JSON.stringify({
+        submission_type: submissionType,
+        raw_idea: rawIdea,
+        problem_statement: problemStatement,
+        assignment_context: assignmentContext
+      })
+    });
+  }
+
+  async uploadReferenceFile(projectId: string, file: File): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.request(`/projects/${projectId}/upload-reference`, {
+      method: 'POST',
+      body: formData
+    });
+  }
+
+  // Analysis & Clarifications
+  async analyzeProject(projectId: string): Promise<AnalysisRecord> {
+    return this.request<AnalysisRecord>(`/analysis/${projectId}/analyze`, {
+      method: 'POST'
+    });
+  }
+
+  async getAnalysis(projectId: string): Promise<AnalysisRecord> {
+    return this.request<AnalysisRecord>(`/analysis/${projectId}/analysis`);
+  }
+
+  async generateClarifications(projectId: string): Promise<ClarificationSession> {
+    return this.request<ClarificationSession>(`/analysis/${projectId}/clarifications/generate`, {
+      method: 'POST'
+    });
+  }
+
+  async getClarifications(projectId: string): Promise<ClarificationSession> {
+    return this.request<ClarificationSession>(`/analysis/${projectId}/clarifications`);
+  }
+
+  async answerClarification(
+    projectId: string,
+    questionId: string,
+    answer?: string,
+    proceedWithAssumption: boolean = false
+  ): Promise<any> {
+    return this.request(`/analysis/${projectId}/clarifications/answer`, {
+      method: 'POST',
+      body: JSON.stringify({
+        question_id: questionId,
+        answer,
+        proceed_with_assumption: proceedWithAssumption
+      })
+    });
+  }
+
+  // PRD
+  async generatePRD(projectId: string): Promise<PRDVersion> {
+    return this.request<PRDVersion>(`/prd/${projectId}/generate`, {
+      method: 'POST'
+    });
+  }
+
+  async getActivePRD(projectId: string): Promise<{ document: any; active_version: PRDVersion | null }> {
+    return this.request(`/prd/${projectId}`);
+  }
+
+  async getPRDVersions(projectId: string): Promise<PRDVersion[]> {
+    return this.request<PRDVersion[]>(`/prd/${projectId}/versions`);
+  }
+
+  async updateSection(
+    projectId: string,
+    sectionKey: string,
+    content: string,
+    isNa: boolean = false,
+    naRationale?: string
+  ): Promise<PRDVersion> {
+    return this.request<PRDVersion>(`/prd/${projectId}/sections/${sectionKey}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        content,
+        is_na: isNa,
+        na_rationale: naRationale
+      })
+    });
+  }
+
+  async regenerateSection(
+    projectId: string,
+    sectionKey: string,
+    guidance?: string
+  ): Promise<PRDVersion> {
+    return this.request<PRDVersion>(`/prd/${projectId}/sections/${sectionKey}/regenerate`, {
+      method: 'POST',
+      body: JSON.stringify({ guidance })
+    });
+  }
+
+  async approveVersion(projectId: string, versionId: string): Promise<PRDVersion> {
+    return this.request<PRDVersion>(`/prd/${projectId}/versions/${versionId}/approve`, {
+      method: 'POST'
+    });
+  }
+
+  // Validation
+  async validatePRD(projectId: string): Promise<ValidationReport> {
+    return this.request<ValidationReport>(`/validation/${projectId}/validate`, {
+      method: 'POST'
+    });
+  }
+
+  async getValidationReport(projectId: string): Promise<ValidationReport> {
+    return this.request<ValidationReport>(`/validation/${projectId}/report`);
+  }
+
+  // Export URLs
+  getExportUrl(projectId: string, format: 'markdown' | 'docx' | 'pdf'): string {
+    return `${API_BASE}/export/${projectId}/${format}`;
+  }
+}
+
+export const api = new ApiClient();

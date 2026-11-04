@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: prd-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=prd_framework
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: prd-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: prd-backend
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=prd_framework
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - DEFAULT_MODEL=llama3.2
+      - USE_OFFLINE_MOCK_IF_OLLAMA_DOWN=true
+      - SECRET_KEY=local-prd-framework-secret-key-production-ready-9999
+    volumes:
+      - ./backend/data/uploads:/app/data/uploads
+      - ./backend/data/exports:/app/data/exports
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: prd-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  mongodb_data:
+  ollama_models:
