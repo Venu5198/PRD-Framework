@@ -263,3 +263,140 @@ def test_cross_format_parity_check(tmp_path, sample_prd_version):
         assert req_id in md_text, f"{req_id} missing from Markdown"
         assert req_id in docx_text, f"{req_id} missing from DOCX"
         assert req_id in pdf_text, f"{req_id} missing from PDF"
+
+
+def test_pdf_a4_page_geometry_and_margins(tmp_path, sample_prd_version):
+    """Verifies that PDF export outputs exact A4 dimensions with 1-inch margins."""
+    import pdfplumber
+
+    service = ExportService(exports_dir=tmp_path)
+    pdf_path = service.export_pdf(sample_prd_version, "AI Customer Support Assistant")
+
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        assert len(pdf.pages) >= 2
+        for page in pdf.pages:
+            # A4 dimensions: 595.28 x 841.89 pt (+- 0.5 pt tolerance)
+            assert abs(page.width - 595.28) < 1.0, f"Expected A4 width 595.28, got {page.width}"
+            assert abs(page.height - 841.89) < 1.0, f"Expected A4 height 841.89, got {page.height}"
+
+
+def test_pdf_unicode_bullet_and_glyph_integrity(tmp_path):
+    """Verifies that UTF-8 bullet points and em dashes render without unmapped glyphs."""
+    import pdfplumber
+
+    doc = Document(
+        metadata=DocumentMetadata(
+            title="Glyph Integrity Test",
+            version_number="v1.0",
+            status="approved",
+            created_at=datetime.utcnow()
+        ),
+        sections=[
+            SectionNode(
+                title="1. Bullet Points & Unicode",
+                key="bullet_test",
+                blocks=[
+                    ListNode(
+                        items=[
+                            "First bullet point item",
+                            "Second item with — em dash and quotes",
+                            "Third item with comparison: confidence >= 80.0%"
+                        ],
+                        ordered=False
+                    )
+                ]
+            )
+        ]
+    )
+
+    service = ExportService(exports_dir=tmp_path)
+    pdf_path = service.export_document_to_pdf(doc, "test_glyphs.pdf")
+
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        text = pdf.pages[0].extract_text()
+        assert "(cid:" not in text, f"Unmapped CID glyph detected: {text}"
+        assert "First bullet point item" in text
+        assert "confidence >= 80.0%" in text
+
+
+def test_pdf_content_aware_table_column_sizing():
+    """Verifies compute_pdf_table_col_widths allocates width proportionally without starving text."""
+    from app.services.export_service import compute_pdf_table_col_widths
+
+    headers = ["ID", "Title", "Description", "Priority", "Traceable AC"]
+    rows = [
+        ["FR-001", "Grounded KB Retrieval", "Very long narrative description explaining actor, trigger, preconditions, inputs, behavior, constraints, and audit trails." * 5, "Must Have", "AC-001, AC-002"],
+        ["FR-002", "Session Management", "Detailed session isolation and multi-turn context retention requirements." * 4, "Must Have", "AC-003"]
+    ]
+
+    widths = compute_pdf_table_col_widths(headers, rows, avail_width=451.28)
+    assert len(widths) == 5
+    assert abs(sum(widths) - 451.28) < 0.5
+
+    # Description (column 2) must receive dominant share (> 200 pt)
+    assert widths[2] > 200.0
+    # ID and Priority must remain compact (< 60 pt)
+    assert widths[0] < 60.0
+    assert widths[3] < 60.0
+
+
+def test_pdf_wide_table_and_repeated_headers(tmp_path):
+    """Verifies that 9-column wide tables format cleanly and headers repeat on page breaks."""
+    import pdfplumber
+
+    risk_headers = ["Risk ID", "Category", "Risk Description", "Root Cause", "Likelihood", "Impact", "Mitigation Strategy", "Contingency Plan", "Owner"]
+    risk_rows = [
+        [f"RSK-{i:03d}", "Operational", f"Detailed description for risk {i} with operational impact.", "Root cause analysis detail.", "Medium", "High", "Mitigation procedure with ongoing audit.", "Contingency fallback plan.", "Team Alpha"]
+        for i in range(1, 15)  # 14 rows will span multiple pages
+    ]
+
+    doc = Document(
+        metadata=DocumentMetadata(
+            title="Wide Table Test",
+            version_number="v2.0",
+            status="approved",
+            created_at=datetime.utcnow()
+        ),
+        sections=[
+            SectionNode(
+                title="1. Multi-Page Risk Table",
+                key="risks",
+                blocks=[TableNode(headers=risk_headers, rows=risk_rows)]
+            )
+        ]
+    )
+
+    service = ExportService(exports_dir=tmp_path)
+    pdf_path = service.export_document_to_pdf(doc, "test_wide_table.pdf")
+
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        assert len(pdf.pages) >= 2
+        for page in pdf.pages:
+            tables = page.extract_tables()
+            assert len(tables) >= 1
+            # Header row repeated on every page
+            first_row = tables[0][0]
+            assert any("Risk ID" in str(c) for c in first_row)
+            assert any("Mitigation" in str(c) for c in first_row)
+
+
+def test_pdf_running_headers_and_footers(tmp_path, sample_prd_version):
+    """Verifies running headers on pages 2+ and footers on all pages with correct page counts."""
+    import pdfplumber
+
+    service = ExportService(exports_dir=tmp_path)
+    pdf_path = service.export_pdf(sample_prd_version, "AI Customer Support Assistant")
+
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        total_pages = len(pdf.pages)
+        assert total_pages >= 2
+
+        # Page 1: Has footer with "Page 1 of X", no running header
+        page1_text = pdf.pages[0].extract_text()
+        assert f"Page 1 of {total_pages}" in page1_text
+        assert "PRODUCT REQUIREMENTS DOCUMENT" in page1_text
+
+        # Page 2+: Has running header with document title and version, and footer
+        page2_text = pdf.pages[1].extract_text()
+        assert "Product Requirements Document | AI Customer Support Assistant" in page2_text
+        assert f"Page 2 of {total_pages}" in page2_text

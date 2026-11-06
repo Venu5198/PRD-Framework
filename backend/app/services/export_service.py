@@ -39,6 +39,112 @@ def clean_xml_text(text: str) -> str:
     return cleaned
 
 
+def ensure_vera_fonts_registered() -> str:
+    """Registers Bitstream Vera TrueType fonts bundled with ReportLab for full UTF-8 Unicode fidelity."""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    import reportlab
+
+    registered = pdfmetrics.getRegisteredFontNames()
+    if "Vera" in registered and "VeraBd" in registered:
+        return "Vera"
+
+    fonts_dir = os.path.join(os.path.dirname(reportlab.__file__), "fonts")
+    vera_regular = os.path.join(fonts_dir, "Vera.ttf")
+    vera_bold = os.path.join(fonts_dir, "VeraBd.ttf")
+    vera_italic = os.path.join(fonts_dir, "VeraIt.ttf")
+    vera_bold_italic = os.path.join(fonts_dir, "VeraBI.ttf")
+
+    if os.path.exists(vera_regular):
+        pdfmetrics.registerFont(TTFont("Vera", vera_regular))
+        pdfmetrics.registerFont(TTFont("VeraBd", vera_bold))
+        pdfmetrics.registerFont(TTFont("VeraIt", vera_italic))
+        pdfmetrics.registerFont(TTFont("VeraBI", vera_bold_italic))
+        pdfmetrics.registerFontFamily(
+            "Vera",
+            normal="Vera",
+            bold="VeraBd",
+            italic="VeraIt",
+            boldItalic="VeraBI"
+        )
+        return "Vera"
+    return "Helvetica"
+
+
+def compute_pdf_table_col_widths(
+    headers: List[str],
+    rows: List[List[str]],
+    avail_width: float = 451.28
+) -> List[float]:
+    """Computes intelligent, content-aware column widths for PDF tables.
+    
+    Prevents narrow columns (IDs, Priorities) from consuming disproportionate space
+    while allocating narrative text columns (Descriptions, Criteria) the majority of printable width.
+    """
+    num_cols = len(headers)
+    if num_cols == 0:
+        return []
+    if num_cols == 1:
+        return [avail_width]
+
+    id_headers = {'id', 'fr id', 'ac id', 'story id', 'risk id', 'linked fr'}
+    short_headers = {
+        'priority', 'likelihood', 'impact', 'category', 'status', 
+        'classification', 'owner', 'confirmation required', 
+        'traceable ac', 'associated requirement', 'provenance'
+    }
+
+    is_wide = num_cols >= 7
+    char_coeff = 4.0 if is_wide else 4.6
+    pad_extra = 5.0 if is_wide else 8.0
+
+    min_widths = []
+    narrative_indices = []
+
+    for c_idx, h in enumerate(headers):
+        h_lower = h.lower().strip()
+        cell_texts = [h] + [r[c_idx] for r in rows if c_idx < len(r)]
+        words = [w.strip('*_`') for t in cell_texts for w in t.split()]
+        max_word = max((len(w) for w in words), default=1)
+
+        if h_lower in id_headers:
+            min_w = 46.0 if is_wide else 50.0
+        elif h_lower in short_headers:
+            min_w = max(max_word * char_coeff + pad_extra, 32.0 if is_wide else 44.0)
+        else:
+            min_w = max(max_word * char_coeff + pad_extra, 38.0 if is_wide else 52.0)
+            narrative_indices.append(c_idx)
+
+        min_widths.append(min_w)
+
+    sum_min = sum(min_widths)
+    if sum_min >= avail_width:
+        # Scale to avail_width while protecting ID headers
+        final_widths = [avail_width * (w / sum_min) for w in min_widths]
+        for i, h in enumerate(headers):
+            if h.lower().strip() in id_headers and final_widths[i] < 45.0:
+                deficit = 45.0 - final_widths[i]
+                final_widths[i] = 45.0
+                max_idx = max(range(num_cols), key=lambda k: final_widths[k])
+                final_widths[max_idx] -= deficit
+    else:
+        surplus = avail_width - sum_min
+        if narrative_indices:
+            narrative_weights = []
+            for idx in narrative_indices:
+                cell_texts = [headers[idx]] + [r[idx] for r in rows if idx < len(r)]
+                c_len = max((len(t) for t in cell_texts), default=1)
+                narrative_weights.append(c_len ** 0.55)
+            sum_nw = sum(narrative_weights)
+            final_widths = list(min_widths)
+            for i, idx in enumerate(narrative_indices):
+                final_widths[idx] += surplus * (narrative_weights[i] / sum_nw)
+        else:
+            final_widths = [w + surplus / num_cols for w in min_widths]
+
+    return [round(w, 2) for w in final_widths]
+
+
 class ExportService:
     def __init__(self, exports_dir: Optional[Path] = None):
         self.exports_dir = exports_dir or settings.EXPORTS_DIR
@@ -336,22 +442,30 @@ class ExportService:
         return self.export_document_to_docx(doc, filename)
 
     def export_document_to_pdf(self, doc: Document, filename: str) -> Path:
-        """Renders Document IR to PDF with ReportLab NumberedCanvas, page headers/footers, and repeated table headers."""
-        from reportlab.lib.pagesizes import letter
+        """Renders Document IR to PDF with professional technical specification layout on A4 paper with 1-inch margins."""
+        from reportlab.lib.pagesizes import A4
         from reportlab.platypus import (
             SimpleDocTemplate,
             Paragraph,
             Spacer,
             Table,
             TableStyle,
-            KeepTogether,
-            Preformatted
+            KeepTogether
         )
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib import colors
         from reportlab.pdfgen import canvas
 
         filepath = self.exports_dir / filename
+        base_font = ensure_vera_fonts_registered()
+        bold_font = f"{base_font}Bd" if base_font == "Vera" else "Helvetica-Bold"
+        italic_font = f"{base_font}It" if base_font == "Vera" else "Helvetica-Oblique"
+
+        # A4: 595.27559 x 841.88976 pt. Margins: 72 pt (1 inch) on all sides.
+        # Printable width: 451.28 pt. Printable height: 697.89 pt.
+        page_width, page_height = A4
+        margin = 72.0
+        avail_width = page_width - (margin * 2)  # 451.27559 pt
 
         class NumberedCanvas(canvas.Canvas):
             def __init__(self, *args, **kwargs):
@@ -372,149 +486,228 @@ class ExportService:
 
             def draw_page_decorations(self, page_count):
                 self.saveState()
-                self.setFont("Helvetica", 8)
+                self.setFont(base_font, 8)
                 self.setFillColor(colors.HexColor("#64748b"))
 
-                # Running Header (pages 2+)
+                # Running Header (pages 2+) - safely inside the 72pt top margin zone
                 if self._pageNumber > 1:
-                    self.drawString(40, 755, f"Product Requirements Document — {doc.metadata.title}")
-                    self.setStrokeColor(colors.HexColor("#e2e8f0"))
+                    header_y = page_height - margin + 26  # y ~ 795.89 pt
+                    line_y = page_height - margin + 14    # y ~ 783.89 pt
+                    header_title = f"Product Requirements Document | {doc.metadata.title}"
+                    if len(header_title) > 65:
+                        header_title = header_title[:62] + "..."
+                    v_str = doc.metadata.version_number if str(doc.metadata.version_number).startswith('v') else f"v{doc.metadata.version_number}"
+                    self.drawString(margin, header_y, header_title)
+                    self.drawRightString(page_width - margin, header_y, v_str)
+                    self.setStrokeColor(colors.HexColor("#cbd5e1"))
                     self.setLineWidth(0.5)
-                    self.line(40, 747, 572, 747)
+                    self.line(margin, line_y, page_width - margin, line_y)
 
-                # Running Footer (all pages)
-                self.setStrokeColor(colors.HexColor("#e2e8f0"))
+                # Running Footer (all pages) - safely inside the 72pt bottom margin zone
+                footer_line_y = margin - 16   # y = 56 pt
+                footer_text_y = margin - 30   # y = 42 pt
+                self.setStrokeColor(colors.HexColor("#cbd5e1"))
                 self.setLineWidth(0.5)
-                self.line(40, 42, 572, 42)
-                self.drawString(40, 30, f"Version {doc.metadata.version_number} | {doc.metadata.status.upper()}")
-                self.drawRightString(572, 30, f"Page {self._pageNumber} of {page_count}")
+                self.line(margin, footer_line_y, page_width - margin, footer_line_y)
+
+                status_str = f"Version {doc.metadata.version_number} | {doc.metadata.status.upper()}"
+                self.drawString(margin, footer_text_y, status_str)
+                self.drawRightString(page_width - margin, footer_text_y, f"Page {self._pageNumber} of {page_count}")
                 self.restoreState()
 
-        # Usable width = 612 - 80 = 532 pt
         doc_template = SimpleDocTemplate(
             str(filepath),
-            pagesize=letter,
-            rightMargin=40,
-            leftMargin=40,
-            topMargin=46,
-            bottomMargin=46
+            pagesize=A4,
+            leftMargin=margin,
+            rightMargin=margin,
+            topMargin=margin,
+            bottomMargin=margin
         )
         styles = getSampleStyleSheet()
 
-        # Unified Design System Typography Scale
+        # Professional Technical Specification Typography Scale
         title_style = ParagraphStyle(
             'DocTitle',
             parent=styles['Heading1'],
-            fontSize=22,
-            leading=26,
+            fontName=bold_font,
+            fontSize=24,
+            leading=28,
             textColor=colors.HexColor("#0f172a"),
             alignment=0,
-            spaceAfter=4
+            spaceAfter=6
         )
-        sub_style = ParagraphStyle(
-            'DocSub',
+        category_style = ParagraphStyle(
+            'DocCategory',
             parent=styles['Normal'],
-            fontSize=11,
-            leading=14,
+            fontName=bold_font,
+            fontSize=9.5,
+            leading=13,
             textColor=colors.HexColor("#0284c7"),
-            spaceAfter=8
+            spaceAfter=4
         )
         meta_style = ParagraphStyle(
             'DocMeta',
             parent=styles['Normal'],
+            fontName=base_font,
             fontSize=8.5,
-            leading=12,
+            leading=12.5,
             textColor=colors.HexColor("#475569"),
-            spaceAfter=16
+            spaceAfter=14
         )
         h1_style = ParagraphStyle(
             'SectionH1',
             parent=styles['Heading2'],
-            fontSize=13.5,
-            leading=17,
+            fontName=bold_font,
+            fontSize=18,
+            leading=22,
             textColor=colors.HexColor("#0f172a"),
-            spaceBefore=14,
-            spaceAfter=6,
+            spaceBefore=16,
+            spaceAfter=8,
             keepWithNext=True
+        )
+        h1_table_style = ParagraphStyle(
+            'SectionH1Table',
+            parent=h1_style,
+            keepWithNext=False
         )
         h2_style = ParagraphStyle(
             'SectionH2',
             parent=styles['Heading3'],
+            fontName=bold_font,
+            fontSize=14,
+            leading=17,
+            textColor=colors.HexColor("#1e293b"),
+            spaceBefore=12,
+            spaceAfter=5,
+            keepWithNext=True
+        )
+        h2_table_style = ParagraphStyle(
+            'SectionH2Table',
+            parent=h2_style,
+            keepWithNext=False
+        )
+        h3_style = ParagraphStyle(
+            'SectionH3',
+            parent=styles['Heading3'],
+            fontName=bold_font,
+            fontSize=12,
+            leading=15,
+            textColor=colors.HexColor("#334155"),
+            spaceBefore=9,
+            spaceAfter=4,
+            keepWithNext=True
+        )
+        h3_table_style = ParagraphStyle(
+            'SectionH3Table',
+            parent=h3_style,
+            keepWithNext=False
+        )
+        h4_style = ParagraphStyle(
+            'SectionH4',
+            parent=styles['Normal'],
+            fontName=bold_font,
             fontSize=10.5,
             leading=13.5,
-            textColor=colors.HexColor("#1e293b"),
-            spaceBefore=10,
-            spaceAfter=4,
+            textColor=colors.HexColor("#475569"),
+            spaceBefore=7,
+            spaceAfter=3,
             keepWithNext=True
         )
         body_style = ParagraphStyle(
             'Body',
             parent=styles['Normal'],
-            fontSize=9,
-            leading=13,
+            fontName=base_font,
+            fontSize=10,
+            leading=14,
             textColor=colors.HexColor("#1e293b"),
             spaceAfter=6
         )
         bullet_style = ParagraphStyle(
             'Bullet',
             parent=styles['Normal'],
-            fontSize=9,
-            leading=13,
+            fontName=base_font,
+            fontSize=10,
+            leading=14,
             textColor=colors.HexColor("#1e293b"),
-            leftIndent=14,
-            firstLineIndent=-10,
+            leftIndent=16,
+            firstLineIndent=-12,
             spaceAfter=3
         )
         callout_style = ParagraphStyle(
             'Callout',
             parent=styles['Normal'],
-            fontSize=8.5,
-            leading=12,
+            fontName=italic_font,
+            fontSize=9.5,
+            leading=13.5,
             textColor=colors.HexColor("#475569"),
-            fontName="Helvetica-Oblique",
             leftIndent=12,
             spaceAfter=6
         )
         code_style = ParagraphStyle(
             'Code',
             parent=styles['Normal'],
-            fontSize=7.5,
-            leading=10.5,
             fontName="Courier",
-            textColor=colors.HexColor("#0f172a"),
-            spaceBefore=4,
-            spaceAfter=6
+            fontSize=8.0,
+            leading=10.5,
+            textColor=colors.HexColor("#0f172a")
         )
         table_hdr_style = ParagraphStyle(
             'TableHdr',
             parent=styles['Normal'],
-            fontSize=8,
-            leading=10.5,
-            fontName="Helvetica-Bold",
+            fontName=bold_font,
+            fontSize=8.5,
+            leading=11,
             textColor=colors.white
         )
         table_cell_style = ParagraphStyle(
             'TableCell',
             parent=styles['Normal'],
+            fontName=base_font,
+            fontSize=8.5,
+            leading=11,
+            textColor=colors.HexColor("#1e293b")
+        )
+        table_hdr_compact_style = ParagraphStyle(
+            'TableHdrCompact',
+            parent=styles['Normal'],
+            fontName=bold_font,
             fontSize=7.5,
-            leading=10,
+            leading=9.5,
+            textColor=colors.white
+        )
+        table_cell_compact_style = ParagraphStyle(
+            'TableCellCompact',
+            parent=styles['Normal'],
+            fontName=base_font,
+            fontSize=7.5,
+            leading=9.5,
             textColor=colors.HexColor("#1e293b")
         )
 
         story = []
 
-        # Cover Title Block
-        story.append(Paragraph("Product Requirements Document", sub_style))
+        # Document Opening Header (Title Section)
+        story.append(Paragraph("PRODUCT REQUIREMENTS DOCUMENT", category_style))
         story.append(Paragraph(doc.metadata.title, title_style))
-        meta_str = f"<b>Version:</b> {doc.metadata.version_number} &nbsp;|&nbsp; <b>Status:</b> {doc.metadata.status.upper()} &nbsp;|&nbsp; <b>Date:</b> {doc.metadata.created_at.strftime('%Y-%m-%d')}"
+
+        meta_items = [
+            f"<b>Version:</b> {doc.metadata.version_number}",
+            f"<b>Status:</b> {doc.metadata.status.upper()}",
+            f"<b>Date:</b> {doc.metadata.created_at.strftime('%Y-%m-%d')}"
+        ]
+        if doc.metadata.job_id:
+            meta_items.append(f"<b>Job ID:</b> <font face='Courier'>{doc.metadata.job_id[:18]}...</font>")
+        meta_html = " &nbsp;|&nbsp; ".join(meta_items)
         if doc.metadata.content_hash:
-            meta_str += f"<br/><b>SHA-256:</b> <font face='Courier'>{doc.metadata.content_hash}</font>"
-        story.append(Paragraph(meta_str, meta_style))
-        story.append(Spacer(1, 10))
+            meta_html += f"<br/><b>SHA-256 Digest:</b> <font face='Courier'>{doc.metadata.content_hash}</font>"
+        story.append(Paragraph(meta_html, meta_style))
+        story.append(Spacer(1, 8))
 
         # Render Sections
         for sec in doc.sections:
-            story.append(Paragraph(sec.title, h1_style))
+            first_block = sec.blocks[0] if sec.blocks else None
+            sec_h_style = h1_table_style if isinstance(first_block, TableNode) else h1_style
+            story.append(Paragraph(sec.title, sec_h_style))
 
             if sec.is_na:
                 na_txt = f"<i>[Section marked Not Applicable: {sec.na_rationale or 'Omitted from baseline product scope'}]</i>"
@@ -522,9 +715,17 @@ class ExportService:
                 story.append(Spacer(1, 6))
                 continue
 
-            for block in sec.blocks:
+            for b_idx, block in enumerate(sec.blocks):
+                next_block = sec.blocks[b_idx + 1] if b_idx + 1 < len(sec.blocks) else None
+                follow_table = isinstance(next_block, TableNode)
+
                 if isinstance(block, HeadingNode):
-                    h_st = h2_style if block.level <= 2 else body_style
+                    if block.level <= 2:
+                        h_st = h2_table_style if follow_table else h2_style
+                    elif block.level == 3:
+                        h_st = h3_table_style if follow_table else h3_style
+                    else:
+                        h_st = h4_style
                     story.append(Paragraph(clean_xml_text(block.text), h_st))
 
                 elif isinstance(block, ParagraphNode):
@@ -535,34 +736,37 @@ class ExportService:
                     if not block.headers:
                         continue
                     num_cols = len(block.headers)
-                    avail_width = 532.0
-                    col_width = avail_width / max(num_cols, 1)
-                    col_widths = [col_width] * num_cols
+                    col_widths = compute_pdf_table_col_widths(block.headers, block.rows, avail_width)
+
+                    is_wide = num_cols >= 7
+                    hdr_style = table_hdr_compact_style if is_wide else table_hdr_style
+                    cell_style = table_cell_compact_style if is_wide else table_cell_style
+                    pad_h = 2.0 if is_wide else 4.5
+                    pad_v = 2.5 if is_wide else 3.5
 
                     table_flow_data = []
                     # Header row
-                    hdr_cells = [Paragraph(clean_xml_text(h), table_hdr_style) for h in block.headers]
+                    hdr_cells = [Paragraph(clean_xml_text(h), hdr_style) for h in block.headers]
                     table_flow_data.append(hdr_cells)
 
                     # Data rows
-                    for r_idx, r in enumerate(block.rows):
+                    for r in block.rows:
                         row_cells = []
-                        for c_idx, cell_str in enumerate(r):
-                            cell_p = Paragraph(clean_xml_text(cell_str), table_cell_style)
+                        for cell_str in r:
+                            cell_p = Paragraph(clean_xml_text(cell_str), cell_style)
                             row_cells.append(cell_p)
                         while len(row_cells) < num_cols:
-                            row_cells.append(Paragraph("", table_cell_style))
+                            row_cells.append(Paragraph("", cell_style))
                         table_flow_data.append(row_cells[:num_cols])
 
-                    # Build TableStyle with alternating rows and repeated header
                     ts = [
                         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#0f172a")),
                         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-                        ('TOPPADDING', (0, 0), (-1, -1), 4),
-                        ('LEFTPADDING', (0, 0), (-1, -1), 5),
-                        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), pad_v),
+                        ('TOPPADDING', (0, 0), (-1, -1), pad_v),
+                        ('LEFTPADDING', (0, 0), (-1, -1), pad_h),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), pad_h),
                         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
                     ]
                     for r_idx in range(len(block.rows)):
@@ -586,12 +790,19 @@ class ExportService:
                         story.append(Paragraph(p_txt, bullet_style))
 
                 elif isinstance(block, (CodeBlockNode, DiagramNode)):
-                    code_lines = block.code.splitlines()[:40]  # Cap diagram/code lines to avoid PDF runaway
-                    formatted_code = "\n".join(code_lines)
-                    pre = Preformatted(formatted_code, code_style)
-                    code_box = Table([[pre]], colWidths=[532.0])
+                    lines = block.code.splitlines()
+                    formatted_lines = []
+                    for l in lines:
+                        escaped = l.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                        num_leading = len(l) - len(l.lstrip(' '))
+                        if num_leading > 0:
+                            escaped = ('&nbsp;' * num_leading) + escaped[num_leading:]
+                        formatted_lines.append(escaped)
+                    code_html = '<br/>'.join(formatted_lines)
+                    code_p = Paragraph(code_html, code_style)
+                    code_box = Table([[code_p]], colWidths=[avail_width])
                     code_box.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f1f5f9")),
+                        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
                         ('LEFTPADDING', (0, 0), (-1, -1), 8),
                         ('RIGHTPADDING', (0, 0), (-1, -1), 8),
                         ('TOPPADDING', (0, 0), (-1, -1), 6),
@@ -603,6 +814,9 @@ class ExportService:
 
                 elif isinstance(block, CalloutNode):
                     story.append(Paragraph(f"<i>&gt; {clean_xml_text(block.text)}</i>", callout_style))
+
+        doc_template.build(story, canvasmaker=NumberedCanvas)
+        return filepath
 
         doc_template.build(story, canvasmaker=NumberedCanvas)
         return filepath
