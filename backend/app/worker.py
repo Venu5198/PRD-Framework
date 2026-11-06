@@ -136,7 +136,8 @@ class BackgroundWorker:
                 on_progress=on_progress,
                 check_cancelled=check_cancelled,
                 job_id=job_id,
-                requested_version=job.get("version_number") or "v2.4.5"
+                requested_version=job.get("version_number"),
+                idempotency_key=job.get("idempotency_key")
             )
 
             # Auto-validate version and set initial lifecycle status (no self-approval)

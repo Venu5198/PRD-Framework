@@ -259,10 +259,16 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
 
   // 4. Generate Full PRD (Asynchronous Job Submission)
   const handleGeneratePRD = async () => {
+    if (activeJob && (activeJob.status === 'queued' || activeJob.status === 'running')) {
+      setActiveTab('prd');
+      return;
+    }
+
     setGeneratingPrd(true);
     setErrorMessage(null);
     try {
-      const resp = await api.startPRDGeneration(projectId);
+      const idempotencyKey = `gen-${projectId}-${Date.now()}`;
+      const resp = await api.startPRDGeneration(projectId, false, idempotencyKey);
       setJobTimer(0);
       const jobData = await api.getJob(resp.job_id);
       setActiveJob(jobData);

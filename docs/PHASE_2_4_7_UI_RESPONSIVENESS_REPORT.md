@@ -34,3 +34,4 @@ All viewports were audited and verified using automated Playwright headless capt
 1. **Touch Targets**: All interactive elements in `DocumentToolbar` and `ProjectView` maintain a minimum 44px x 44px tap area on viewports under 768px.
 2. **Keyboard Accessibility**: Both the Document Details Drawer and the Mobile Table of Contents respond immediately to the `Escape` key.
 3. **Independent Scrolling**: The details drawer and mobile TOC scroll independently of the underlying document body without layout distortion or horizontal scroll jitter.
+

@@ -65,3 +65,4 @@ The complete quality gate suite was executed across backend unit/integration tes
   - `responsive_desktop_1920.png` (1920x1080)
   - `document_viewer_details_drawer.png` (Desktop drawer open)
   - `responsive_mobile_390_drawer.png` (Mobile drawer open)
+

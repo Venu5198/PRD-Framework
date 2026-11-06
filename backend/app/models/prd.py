@@ -39,13 +39,43 @@ class CanonicalProvenance(str, Enum):
             return cls.INFERRED
 
 class PRDStatus(str, Enum):
-    DRAFT = "draft"
+    RESERVED = "reserved"
+    GENERATING = "generating"
+    GENERATED = "generated"
+    VALIDATING = "validating"
     UNDER_REVIEW = "under_review"
-    BLOCKED = "blocked"
     APPROVED = "approved"
+    FAILED = "failed"
+    BLOCKED = "blocked"
     SUPERSEDED = "superseded"
     ARCHIVED = "archived"
     REJECTED = "rejected"
+    DRAFT = "draft"  # backward compatibility alias
+
+VALID_VERSION_TRANSITIONS = {
+    PRDStatus.RESERVED: {PRDStatus.GENERATING, PRDStatus.FAILED},
+    PRDStatus.GENERATING: {PRDStatus.GENERATED, PRDStatus.FAILED},
+    PRDStatus.GENERATED: {PRDStatus.VALIDATING, PRDStatus.UNDER_REVIEW, PRDStatus.FAILED},
+    PRDStatus.VALIDATING: {PRDStatus.UNDER_REVIEW, PRDStatus.APPROVED, PRDStatus.BLOCKED, PRDStatus.FAILED},
+    PRDStatus.UNDER_REVIEW: {PRDStatus.APPROVED, PRDStatus.BLOCKED, PRDStatus.SUPERSEDED, PRDStatus.FAILED},
+    PRDStatus.BLOCKED: {PRDStatus.UNDER_REVIEW, PRDStatus.SUPERSEDED, PRDStatus.FAILED},
+    PRDStatus.APPROVED: {PRDStatus.SUPERSEDED, PRDStatus.ARCHIVED},
+    PRDStatus.FAILED: {PRDStatus.GENERATING, PRDStatus.RESERVED},
+    PRDStatus.SUPERSEDED: {PRDStatus.ARCHIVED},
+    PRDStatus.REJECTED: {PRDStatus.UNDER_REVIEW, PRDStatus.SUPERSEDED, PRDStatus.FAILED},
+    PRDStatus.DRAFT: {PRDStatus.UNDER_REVIEW, PRDStatus.GENERATING, PRDStatus.APPROVED, PRDStatus.FAILED, PRDStatus.BLOCKED},
+}
+
+def can_transition_version(current: str, target: str) -> bool:
+    try:
+        curr_enum = PRDStatus(current.lower())
+        target_enum = PRDStatus(target.lower())
+    except ValueError:
+        return True  # permissive for legacy/custom status strings
+    if curr_enum == target_enum:
+        return True
+    allowed = VALID_VERSION_TRANSITIONS.get(curr_enum, set())
+    return target_enum in allowed
 
 class ProvenanceEntry(BaseModel):
     statement_id: str
@@ -156,11 +186,13 @@ class PRDVersion(BaseModel):
     project_id: str
     version_number: str = "v1.0"
     job_id: Optional[str] = None
+    idempotency_key: Optional[str] = None
     content_hash: Optional[str] = None
-    status: str = Field(default="draft", description="'draft', 'approved', 'archived', 'rejected', 'under_review'")
+    status: str = Field(default="draft", description="'reserved', 'generating', 'generated', 'validating', 'draft', 'approved', 'archived', 'rejected', 'under_review', 'blocked', 'failed'")
     sections: Dict[str, PRDSectionContent] = Field(default_factory=dict)
     provenance_ledger: List[Dict[str, Any]] = Field(default_factory=list)
     changelog: str = "Initial generation"
+    error_details: Optional[Dict[str, Any]] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     created_by: str = "system"
 

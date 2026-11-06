@@ -285,3 +285,4 @@ async def test_positive_four_domains_phase2_4_7(tmp_path: Path):
         assert len(pdf_sha) == 64
         # Hashes must be mutually distinct
         assert len({md_sha, docx_sha, pdf_sha}) == 3
+

@@ -186,9 +186,14 @@ class ApiClient {
   }
 
   // PRD Asynchronous Generation Jobs
-  async startPRDGeneration(projectId: string, useMock: boolean = false): Promise<JobCreateResponse> {
+  async startPRDGeneration(projectId: string, useMock: boolean = false, idempotencyKey?: string): Promise<JobCreateResponse> {
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) {
+      headers['Idempotency-Key'] = idempotencyKey;
+    }
     return this.request<JobCreateResponse>(`/projects/${projectId}/prd/generate?use_mock=${useMock}`, {
-      method: 'POST'
+      method: 'POST',
+      headers
     });
   }
 
@@ -211,9 +216,14 @@ class ApiClient {
   }
 
   // PRD Synchronous fallback
-  async generatePRD(projectId: string): Promise<PRDVersion> {
+  async generatePRD(projectId: string, idempotencyKey?: string): Promise<PRDVersion> {
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) {
+      headers['Idempotency-Key'] = idempotencyKey;
+    }
     return this.request<PRDVersion>(`/prd/${projectId}/generate`, {
-      method: 'POST'
+      method: 'POST',
+      headers
     });
   }
 

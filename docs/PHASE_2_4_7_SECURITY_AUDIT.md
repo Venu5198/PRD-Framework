@@ -43,3 +43,4 @@ A comprehensive multi-layered security audit was executed on the PRD Engineering
 
 - **Self-Approval Prevention**: Background worker PRD generation is strictly prohibited from granting `APPROVED` status. Initial generated status defaults to `under_review` (or `blocked` upon validation error).
 - **Approval Gate**: `approve_version` explicitly validates the PRD before updating status, rejecting approval and raising `ValueError` (HTTP 400) if validation has not passed with zero blocking errors.
+

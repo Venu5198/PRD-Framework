@@ -1,6 +1,6 @@
 import logging
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Header
 
 logger = logging.getLogger(__name__)
 from app.models.prd import (
@@ -25,6 +25,7 @@ router = APIRouter()
 async def generate_prd(
     project_id: str,
     use_mock: bool = False,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     project_repo: ProjectRepository = Depends(get_project_repo),
     prd_service: PRDService = Depends(get_prd_service),
     current_user: dict = Depends(get_current_user)
@@ -33,7 +34,12 @@ async def generate_prd(
     if not project or project.get("owner_id") != current_user["id"]:
         raise HTTPException(status_code=404, detail="Project not found.")
     try:
-        return await prd_service.generate_full_prd(project_id, current_user["id"], force_mock=use_mock)
+        return await prd_service.generate_full_prd(
+            project_id,
+            current_user["id"],
+            force_mock=use_mock,
+            idempotency_key=idempotency_key
+        )
     except Exception as e:
         logger.exception(f"Error generating PRD for {project_id}: {e}")
         raise HTTPException(status_code=400, detail=str(e))

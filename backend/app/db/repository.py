@@ -114,6 +114,18 @@ class PRDVersionRepository(BaseRepository):
     async def get_by_prd(self, prd_id: str) -> List[Dict[str, Any]]:
         return await self.find({"prd_id": prd_id}, sort=[("created_at", -1)])
 
+    async def get_by_prd_and_version(self, prd_id: str, version_number: str) -> Optional[Dict[str, Any]]:
+        return await self.find_one({"prd_id": prd_id, "version_number": version_number})
+
+    async def get_by_job_id(self, job_id: str) -> Optional[Dict[str, Any]]:
+        return await self.find_one({"job_id": job_id})
+
+    async def get_by_idempotency_key(self, idempotency_key: str) -> Optional[Dict[str, Any]]:
+        return await self.find_one({"idempotency_key": idempotency_key})
+
+    async def get_by_project(self, project_id: str) -> List[Dict[str, Any]]:
+        return await self.find({"project_id": project_id}, sort=[("created_at", -1)])
+
 class ValidationRepository(BaseRepository):
     def __init__(self):
         super().__init__("validation_reports")

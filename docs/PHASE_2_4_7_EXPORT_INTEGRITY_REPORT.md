@@ -55,3 +55,4 @@ The regenerated Customer Support PRD v2.4.7 deliverables produced the following 
 - **Sections In-Scope**: 27 canonical sections rendered consistently across web viewer, MD, DOCX, and PDF.
 - **Table Integrity**: All markdown tables parse into typed `TableNode` IR elements with explicit column headers, repeated header rows on page breaks (`repeatRows=1`), and cell padding.
 - **Code Blocks & Diagrams**: Rendered in monospaced format with borders and syntax background styling.
+

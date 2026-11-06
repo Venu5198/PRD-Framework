@@ -18,10 +18,12 @@ from app.models.prd import (
     PRDDocument,
     PRDVersion,
     PRDSectionContent,
+    PRDStatus,
     SectionUpdatePayload,
     SectionRegeneratePayload,
     SECTION_TITLES
 )
+from app.services.version_allocation_service import VersionAllocationService
 from app.models.submission import IdeaSubmissionResponse
 from app.models.analysis import AnalysisRecord
 from app.ai.factory import get_ai_gateway
@@ -58,6 +60,7 @@ class PRDService:
         self.clarification_repo = clarification_repo
         self.gen_run_repo = gen_run_repo
         self.validation_repo = validation_repo
+        self.version_allocation_service = VersionAllocationService(version_repo)
 
     async def analyze_submission(self, project_id: str, force_mock: bool = False) -> AnalysisRecord:
         """Run stage 1: Input Analysis."""
@@ -166,7 +169,8 @@ class PRDService:
         on_progress: Optional[Any] = None,
         check_cancelled: Optional[Any] = None,
         job_id: Optional[str] = None,
-        requested_version: Optional[str] = None
+        requested_version: Optional[str] = None,
+        idempotency_key: Optional[str] = None
     ) -> PRDVersion:
         """Run stages 3, 4 & 5: Requirements, Business Rules, and 27-Section Assembly."""
         project = await self.project_repo.get_by_id(project_id)
@@ -289,76 +293,98 @@ class PRDService:
             prd_id = prd_doc["id"]
         else:
             prd_id = existing_prd["id"]
-            if requested_version:
-                target_version = requested_version
-            else:
-                prior_versions = await self.version_repo.get_by_prd(prd_id)
-                target_version = f"v{len(prior_versions) + 1}.0"
 
-        # Stage 6: Canonical 27-Section Assembly
-        if on_progress:
-            await on_progress("prd_assembly", ["input_analysis", "requirements_engineering", "stakeholder_analysis", "business_rules", "risk_analysis"], {"stage_name": "Synthesizing Canonical 27-Section PRD", "step": 6, "total_steps": 6})
-        if check_cancelled and await check_cancelled():
-            raise asyncio.CancelledError("Job cancelled by user.")
-        sections = await generator.generate_full_prd(
-            project_title=project.get("title", "Project"),
-            analysis=analysis,
-            clarification_session=clarification_session,
-            requirements_data=requirements_data,
-            version_number=target_version,
-            job_id=job_id
+        # Safely reserve version record with state RESERVED
+        reserved_record = await self.version_allocation_service.reserve_version(
+            prd_id=prd_id,
+            project_id=project_id,
+            user_id=user_id,
+            job_id=job_id,
+            idempotency_key=idempotency_key,
+            requested_version=requested_version,
+            is_major=True
         )
-        duration = time.time() - start_time
+        version_id = reserved_record["id"]
+        target_version = reserved_record["version_number"]
 
-        # Compute canonical content hash of the version's sections
-        import hashlib
-        # Synchronize Section 1 Content Hash with authoritative canonical content hash
-        canonical_content = "".join(f"## {sections[k].title}\n\n{sections[k].content}\n\n" for k in sorted(sections.keys()) if k != "document_information")
-        content_hash = hashlib.sha256(canonical_content.encode("utf-8")).hexdigest()
-        if "document_information" in sections:
-            doc_info = sections["document_information"].content
-            doc_info = re.sub(r"(\*\*Content Hash \(SHA-256\):\*\*)\s*`[^`]+`", f"\\1 `{content_hash}`", doc_info)
-            sections["document_information"].content = doc_info
+        # If already completed with full sections (e.g. idempotent retry of finished job), return it
+        if reserved_record.get("status") in (PRDStatus.GENERATED.value, PRDStatus.UNDER_REVIEW.value, PRDStatus.APPROVED.value) and reserved_record.get("sections"):
+            logger.info(f"Returning existing completed version {target_version} ({version_id})")
+            return PRDVersion(**reserved_record)
 
-        # Create immutable version record
-        version_data = {
-            "prd_id": prd_id,
-            "project_id": project_id,
-            "job_id": job_id,
-            "version_number": target_version,
-            "content_hash": content_hash,
-            "status": "draft",
-            "sections": {k: v.dict() for k, v in sections.items()},
-            "provenance_ledger": getattr(generator, "last_provenance_ledger", []),
-            "changelog": f"Full PRD generation {target_version}",
-            "created_at": datetime.utcnow(),
-            "created_by": user_id
-        }
-        saved_version = await self.version_repo.create(version_data)
-        version_id = saved_version["id"]
+        # Transition to GENERATING
+        await self.version_allocation_service.transition_version(version_id, PRDStatus.GENERATING)
 
-        # Update active version reference in PRD and Project
-        await self.prd_repo.update(prd_id, {
-            "current_version_id": version_id,
-            "current_version_number": target_version,
-            "updated_at": datetime.utcnow()
-        })
-        await self.project_repo.update(project_id, {
-            "active_prd_id": prd_id,
-            "updated_at": datetime.utcnow()
-        })
+        try:
+            # Stage 6: Canonical 27-Section Assembly
+            if on_progress:
+                await on_progress("prd_assembly", ["input_analysis", "requirements_engineering", "stakeholder_analysis", "business_rules", "risk_analysis"], {"stage_name": "Synthesizing Canonical 27-Section PRD", "step": 6, "total_steps": 6})
+            if check_cancelled and await check_cancelled():
+                raise asyncio.CancelledError("Job cancelled by user.")
+            sections = await generator.generate_full_prd(
+                project_title=project.get("title", "Project"),
+                analysis=analysis,
+                clarification_session=clarification_session,
+                requirements_data=requirements_data,
+                version_number=target_version,
+                job_id=job_id
+            )
+            duration = time.time() - start_time
 
-        # Telemetry record
-        await self.gen_run_repo.create({
-            "project_id": project_id,
-            "prd_id": prd_id,
-            "version_id": version_id,
-            "stage": "full_prd_generation",
-            "duration_seconds": round(duration, 3),
-            "created_at": datetime.utcnow()
-        })
+            # Compute canonical content hash of the version's sections
+            import hashlib
+            # Synchronize Section 1 Content Hash with authoritative canonical content hash
+            canonical_content = "".join(f"## {sections[k].title}\n\n{sections[k].content}\n\n" for k in sorted(sections.keys()) if k != "document_information")
+            content_hash = hashlib.sha256(canonical_content.encode("utf-8")).hexdigest()
+            if "document_information" in sections:
+                doc_info = sections["document_information"].content
+                doc_info = re.sub(r"(\*\*Content Hash \(SHA-256\):\*\*)\s*`[^`]+`", f"\\1 `{content_hash}`", doc_info)
+                sections["document_information"].content = doc_info
 
-        return PRDVersion(**saved_version)
+            # Transition to GENERATED and populate content
+            version_update = {
+                "content_hash": content_hash,
+                "status": PRDStatus.GENERATED.value,
+                "sections": {k: v.dict() for k, v in sections.items()},
+                "provenance_ledger": getattr(generator, "last_provenance_ledger", []),
+                "changelog": f"Full PRD generation {target_version}",
+                "updated_at": datetime.utcnow()
+            }
+            saved_version = await self.version_repo.update(version_id, version_update)
+
+            # Update active version reference in PRD and Project
+            await self.prd_repo.update(prd_id, {
+                "current_version_id": version_id,
+                "current_version_number": target_version,
+                "updated_at": datetime.utcnow()
+            })
+            await self.project_repo.update(project_id, {
+                "active_prd_id": prd_id,
+                "updated_at": datetime.utcnow()
+            })
+
+            # Telemetry record
+            await self.gen_run_repo.create({
+                "project_id": project_id,
+                "prd_id": prd_id,
+                "version_id": version_id,
+                "stage": "full_prd_generation",
+                "duration_seconds": round(duration, 3),
+                "created_at": datetime.utcnow()
+            })
+
+            return PRDVersion(**saved_version)
+        except Exception as exc:
+            logger.error(f"Failed generating PRD {target_version} ({version_id}): {exc}")
+            try:
+                await self.version_allocation_service.transition_version(
+                    version_id,
+                    PRDStatus.FAILED,
+                    error_details={"error_message": str(exc), "failed_at": datetime.utcnow().isoformat()}
+                )
+            except Exception as trans_err:
+                logger.error(f"Failed transitioning version {version_id} to FAILED: {trans_err}")
+            raise
 
     async def update_section(self, project_id: str, section_key: str, payload: SectionUpdatePayload, user_id: str) -> PRDVersion:
         """Section editing creates a new minor version (e.g. v1.1) to preserve immutability."""
@@ -388,13 +414,15 @@ class PRDService:
             last_modified=datetime.utcnow()
         )
 
-        # Increment minor version (v1.0 -> v1.1)
-        cur_num = current_ver.version_number
-        try:
-            major, minor = cur_num.replace("v", "").split(".")
-            next_num = f"v{major}.{int(minor) + 1}"
-        except Exception:
-            next_num = f"{cur_num}.1"
+        # Safely allocate next minor version (e.g. v1.0 -> v1.1)
+        reserved_record = await self.version_allocation_service.reserve_version(
+            prd_id=prd["id"],
+            project_id=project_id,
+            user_id=user_id,
+            is_major=False
+        )
+        version_id = reserved_record["id"]
+        next_num = reserved_record["version_number"]
 
         # Synchronize Section 1 Document Information version header with new version number
         if "document_information" in sections and section_key != "document_information":
@@ -408,19 +436,15 @@ class PRDService:
             sections["document_information"] = doc_sec
 
         new_version_data = {
-            "prd_id": prd["id"],
-            "project_id": project_id,
-            "version_number": next_num,
             "status": "draft",
             "sections": {k: v.dict() for k, v in sections.items()},
             "changelog": f"Edited section: {title}",
-            "created_at": datetime.utcnow(),
-            "created_by": user_id
+            "updated_at": datetime.utcnow()
         }
-        saved_ver = await self.version_repo.create(new_version_data)
+        saved_ver = await self.version_repo.update(version_id, new_version_data)
         
         await self.prd_repo.update(prd["id"], {
-            "current_version_id": saved_ver["id"],
+            "current_version_id": version_id,
             "current_version_number": next_num,
             "updated_at": datetime.utcnow()
         })

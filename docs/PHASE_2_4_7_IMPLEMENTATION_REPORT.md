@@ -47,3 +47,4 @@ This release consolidates semantic claim-level validation, multi-device frontend
 - **[services/export_service.py](file:///c:/PRD-Framework/backend/app/services/export_service.py)**:
   - Implemented `calculate_file_hash` and `export_all_with_manifest`.
   - Generates independent SHA-256 hashes for MD, DOCX, and PDF artifacts and writes authoritative external manifest.
+

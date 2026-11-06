@@ -29,3 +29,4 @@ Prior releases successfully repaired PDF geometry, typography, and table cell wr
 | **Generator Self-Approval** | `worker.py` set `status: "approved"` upon generation completion | Set initial generation status to `under_review` (or `blocked`); enforced `approve_version` gate checking validation pass |
 | **Validation Granularity** | Regex checks without atomic claim breakdown | Implemented `_extract_atomic_claims` across all 27 canonical sections with entailment adjudication (`SUPPORTED`, `PARTIALLY_SUPPORTED`, `CONTRADICTED`, `AMBIGUOUS`, `NOT_SUPPORTED`) |
 | **Export Manifest Hash Ambiguity** | Hash embedded inside raw content caused circular reference | Enforced separate SHA-256 calculation per artifact (MD, DOCX, PDF) tracked in authoritative external manifest |
+

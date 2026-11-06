@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Header
 from app.models.project import ProjectCreate, ProjectResponse, ProjectUpdate
 from app.models.submission import IdeaSubmissionCreate, IdeaSubmissionResponse
 from app.db.repository import ProjectRepository, SubmissionRepository
@@ -190,6 +190,7 @@ async def list_submissions(
 async def generate_prd_job(
     project_id: str,
     use_mock: bool = False,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     project_repo: ProjectRepository = Depends(get_project_repo),
     job_repo: JobRepository = Depends(get_job_repo),
     current_user: dict = Depends(get_current_user)
@@ -208,7 +209,18 @@ async def generate_prd_job(
             is_existing=True
         )
 
-    # Create new queued job
+    # Check if an existing job matches the idempotency key for this project
+    if idempotency_key:
+        matched_job = await job_repo.find_one({"idempotency_key": idempotency_key, "project_id": project_id})
+        if matched_job:
+            return JobCreateResponse(
+                job_id=matched_job["job_id"],
+                status=matched_job.get("status", JobStatus.QUEUED),
+                message="PRD generation job already submitted with this idempotency key.",
+                is_existing=True
+            )
+
+    # Create new queued job (version_number dynamically allocated during generation)
     import uuid
     new_job_id = str(uuid.uuid4())
     job_doc = {
@@ -224,7 +236,8 @@ async def generate_prd_job(
         "provider": "offline_mock" if use_mock else settings.AI_PROVIDER,
         "model": "offline_mock" if use_mock else (settings.GROQ_MODEL if settings.AI_PROVIDER == "groq" else settings.OLLAMA_MODEL),
         "force_mock": use_mock,
-        "version_number": "v2.4.6",
+        "idempotency_key": idempotency_key,
+        "version_number": None,
         "retry_count": 0,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
