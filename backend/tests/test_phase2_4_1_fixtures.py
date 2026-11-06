@@ -181,7 +181,7 @@ def make_valid_sections(
         (
             "| ID | Title | Description | Classification | Priority |\n"
             "|---|---|---|---|---|\n"
-            f"| **NFR-001** | Transaction Response Latency | System targets 95th percentile response times under 2.5s | Proposed target | Must Have |\n"
+            f"| **NFR-001** | Transaction Response Latency | System targets 95th percentile response times under 2.5s | Proposed target | Should Have |\n"
             f"| **NFR-002** | Session Dialogue Encryption & Security | All domain data encrypted via TLS 1.3 in transit and AES-256 at rest | Confirmed requirement | Must Have |\n"
             f"| **NFR-003** | High Availability & Resilient Failover | Service targets 99.5% operational uptime with automated logging | Proposed target | Should Have |\n"
         )

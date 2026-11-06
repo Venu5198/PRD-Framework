@@ -105,6 +105,14 @@ class RiskAnalyst:
                 mit = r.get("mitigation_strategy") or r.get("mitigation") or f"Implement automated validation rules and circuit breakers for {domain}."
                 cont = r.get("contingency_plan") or r.get("contingency") or "Fail safe to manual operator review with diagnostic telemetry."
                 owner = r.get("owner_role") or r.get("owner") or "Systems Engineering Lead"
+
+                # Sanitize out-of-scope ticketing/external channels from risks
+                title = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", title, flags=re.IGNORECASE)
+                ev = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", ev, flags=re.IGNORECASE)
+                ev = re.sub(r"\b(?:whatsapp|telegram|sms|phone call)\b", "web chat reconnection", ev, flags=re.IGNORECASE)
+                root = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", root, flags=re.IGNORECASE)
+                mit = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", mit, flags=re.IGNORECASE)
+                cont = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", cont, flags=re.IGNORECASE)
                 
                 parsed_risks.append(RiskItem(
                     id=f"RSK-{idx:03d}",

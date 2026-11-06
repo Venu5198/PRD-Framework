@@ -135,8 +135,8 @@ async def test_positive_customer_support_prd_remediated():
     nfr_clean = (
         "| ID | Title | Description | Classification | Priority |\n"
         "|---|---|---|---|---|\n"
-        "| **NFR-001** | Response Latency | System targets response latency under 3.0 seconds under baseline network concurrency. | Proposed target | Must Have |\n"
-        "| **NFR-002** | Data Protection in Transit and Rest | Customer dialogue turns encrypted via TLS and encrypted at rest with role-based access. | Proposed target | Must Have |\n"
+        "| **NFR-001** | Response Latency | System targets response latency under 3.0 seconds under baseline network concurrency. | Proposed target | Should Have |\n"
+        "| **NFR-002** | Data Protection in Transit and Rest | Customer dialogue turns encrypted via TLS and encrypted at rest with role-based access. | Proposed target | Should Have |\n"
         "| **NFR-003** | System Availability | System targets 99.5% operational availability with local diagnostic error logging. [Open Architectural Decision: Multi-zone standby pending review] | Open decision | Should Have |\n"
     )
     sections["non_functional_requirements"] = PRDSectionContent(

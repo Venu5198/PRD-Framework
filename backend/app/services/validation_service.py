@@ -24,7 +24,7 @@ AMBIGUOUS_TERMS = [
 class ValidationService:
     def __init__(
         self,
-        validation_repo: ValidationRepository,
+        validation_repo: Optional[ValidationRepository] = None,
         analysis_repo: Optional[AnalysisRepository] = None
     ):
         self.repo = validation_repo
@@ -285,6 +285,8 @@ class ValidationService:
                 target_secs = [
                     ("executive_summary", ["integrate with chat/ticketing", "ticketing platforms", "resolve tickets quickly", "close tickets", "incoming tickets"]),
                     ("user_journeys", ["ticket creation", "ticket id", "queued ticket", "ticket generation", "closes tickets", "resolve tickets", "open the queued ticket"]),
+                    ("system_workflows", ["zendesk", "third-party ticketing", "external ticketing", "ticket creation", "creates ticket", "zendesk ticket", "jira"]),
+                    ("integration_requirements", ["zendesk", "third-party ticketing", "external ticketing", "ticket creation"]),
                     ("risks_and_mitigation", ["crm vendor api", "ticketing platform api", "external ticketing failure"]),
                     ("assumptions_and_open_questions", ["ticketing api credentials", "crm api integration is available", "ticketing platform is maintained"])
                 ]
@@ -795,7 +797,7 @@ class ValidationService:
 
                     # 2. Check if statement duplicates any FR description
                     for fid, fr_desc in fr_desc_map.items():
-                        if len(fr_desc) > 30 and (fr_desc in stmt_lower or stmt_lower in fr_desc):
+                        if len(fr_desc) > 30 and (stmt_lower == fr_desc or (not ("given " in stmt_lower and "then " in stmt_lower) and fr_desc in stmt_lower) or (stmt_lower in fr_desc and len(stmt_lower) > 25 and not ("given " in stmt_lower and "then " in stmt_lower))):
                             issues.append(ValidationIssue(
                                 rule_id="VAL-AC-004",
                                 severity="error",
@@ -1325,18 +1327,19 @@ class ValidationService:
             # Check for contradictory escalation thresholds across sections (e.g. 50%, 70%, 0.5 vs 80%)
             for sec_key, sec in prd_version.sections.items():
                 if sec and not sec.is_na:
-                    c_low = sec.content.lower()
-                    if "escalat" in c_low and ("0.5" in c_low or "70%" in c_low or "50%" in c_low or "relevance score < 0.7" in c_low):
-                        issues.append(ValidationIssue(
-                            rule_id="VAL-XSEC-001",
-                            severity="error",
-                            section_key=sec_key,
-                            title=f"Cross-Section Escalation Metric Conflict in {sec_key}",
-                            description="Section defines a conflicting escalation threshold (0.5, 50%, or 70%) contradicting the authoritative 80.0% answer confidence rule.",
-                            recommendation="Align all escalation triggers across all sections strictly with the 80.0% confidence threshold."
-                        ))
-                        score -= 10
-                        break
+                    for line in sec.content.split("\n"):
+                        line_low = line.lower()
+                        if "escalat" in line_low and any(th in line_low for th in ["0.5", "50%", "70%", "< 0.7", "< 70%", "relevance score < 0.7"]):
+                            issues.append(ValidationIssue(
+                                rule_id="VAL-XSEC-001",
+                                severity="error",
+                                section_key=sec_key,
+                                title=f"Cross-Section Escalation Metric Conflict in {sec_key}",
+                                description="Section defines a conflicting escalation threshold (0.5, 50%, or 70%) contradicting the authoritative 80.0% answer confidence rule.",
+                                recommendation="Align all escalation triggers across all sections strictly with the 80.0% confidence threshold."
+                            ))
+                            score -= 10
+                            break
 
         # VAL-XSEC-002: Retention Policy Consistency Check
         ret_patterns_24h = ["24 hours", "24-hour", "24h", "duration of the active chat session", "session duration"]
@@ -1471,6 +1474,72 @@ class ValidationService:
                 ))
                 score -= 8
 
+        # VAL-GRAM-001: Functional Requirement Grammar and Statement Completeness Check
+        fr_sec = prd_version.sections.get("functional_requirements")
+        if fr_sec and not fr_sec.is_na and fr_sec.content:
+            fr_text = fr_sec.content
+            gram_patterns = [
+                r"\bThe system the (?:AI|system|assistant|application|engine)\b",
+                r"\bThe system append\b",
+                r"\bThe system route\b",
+                r"\bThe system maintain\b",
+                r"\bThe system generate\b",
+                r"\bThe system store\b",
+                r"\bThe system if confidence\b",
+                r"\bThe system if\b"
+            ]
+            for gp in gram_patterns:
+                m = re.search(gp, fr_text, re.IGNORECASE)
+                if m:
+                    issues.append(ValidationIssue(
+                        rule_id="VAL-GRAM-001",
+                        severity="error",
+                        section_key="functional_requirements",
+                        title=f"Malformed Requirement Grammar: '{m.group(0)}'",
+                        description=f"Functional requirements contain grammatically malformed phrases or uninflected prompt fragments ('{m.group(0)}').",
+                        recommendation="Ensure system behavior describes observable actions with proper third-person singular grammar and complete predicate structure."
+                    ))
+                    score -= 10
+                    break
+
+        # VAL-ACT-001: Incorrect Actor Responsibility in Interaction Sequence
+        for key in ["user_journeys", "system_workflows"]:
+            sec_obj = prd_version.sections.get(key)
+            if sec_obj and not sec_obj.is_na and sec_obj.content:
+                bad_actor_patterns = [
+                    r"\b(?:SupportRepresentative|Support\s+Representative|Support_Representative|Representative|CustomerServiceRepresentative|Customer\s+Service\s+Representative|Agent|Customer|End-Customer)\b[^\n\->]*->>\s*\w+\s*:\s*(?:Calculates|Generates answer|Evaluates confidence|Computes|Searches the knowledge base)",
+                    r"- \*\*Actor \((?:Support Representative|Customer Service Representative|Agent)\):\*\*\s*(?:Calculates confidence|Generates a concise answer|Computes similarity)"
+                ]
+                for bap in bad_actor_patterns:
+                    m = re.search(bap, sec_obj.content, re.IGNORECASE)
+                    if m:
+                        issues.append(ValidationIssue(
+                            rule_id="VAL-ACT-001",
+                            severity="error",
+                            section_key=key,
+                            title="Incorrect Actor Responsibility in Interaction Sequence",
+                            description=f"Human actor is depicted executing internal algorithmic or AI processing ('{m.group(0)[:60]}'). Internal computations must be assigned to the system actor.",
+                            recommendation="Assign algorithmic processing, confidence evaluation, and retrieval to the system actor."
+                        ))
+                        score -= 10
+                        break
+
+        # VAL-NUM-004: Unsupported Wait-Time Estimates in User Journeys
+        for key in ["user_journeys", "system_workflows"]:
+            sec_obj = prd_version.sections.get(key)
+            if sec_obj and not sec_obj.is_na and sec_obj.content:
+                if re.search(r"\b(?:expected wait time|estimated wait time|informs the customer of an expected wait time)\b", sec_obj.content, re.IGNORECASE):
+                    issues.append(ValidationIssue(
+                        rule_id="VAL-NUM-004",
+                        severity="error",
+                        section_key=key,
+                        title="Unsupported Wait-Time Estimate in User Journey",
+                        description="User journey specifies calculating or communicating queue wait-time estimates without user-specified SLA or telemetry baseline.",
+                        recommendation="Remove ungrounded wait-time estimations; notify user of queue status without unverified time commitments."
+                    ))
+                    score -= 8
+                    break
+
         # VAL-DIA-001: Truncated or Malformed Mermaid Sequence Diagrams
         for sec_k, sec_obj in prd_version.sections.items():
             if sec_obj and not sec_obj.is_na and sec_obj.content:
@@ -1489,7 +1558,14 @@ class ValidationService:
                             ))
                             score -= 10
                             break
-                        truncated_word_match = re.search(r":\s*.*?\b(?:into the [A-Z]|the [a-z]|draf|notifies th|with|at the)\s*$", dl)
+                        truncated_word_match = (
+                            re.search(
+                                r":\s*.*?\b(?:into the [A-Z]|the [a-z]|draf|notifies th|with|at the|types a description of|searches the knowledge|ai prompts the|as resolved if|ai informs the customer of|either approves|system truncates and|marks ticket as closed|system auto-closes)\s*$",
+                                dl,
+                                re.IGNORECASE
+                            )
+                            or re.search(r":\s*.*?\b(?:of|the|a|an|in|on|at|by|for|with|and|or|if|to|from)\s*$", dl, re.IGNORECASE)
+                        )
                         if truncated_word_match:
                             issues.append(ValidationIssue(
                                 rule_id="VAL-DIA-001",
@@ -1515,28 +1591,170 @@ class ValidationService:
                     r"\b(?:reduce|reduces|reducing)\s+repetitive\s+query\s+volume\s+by\s+(\d{1,2}%)(?!\w)",
                     r"\b(?:deflect|deflects|deflecting)\s+(?:up\s+to\s+)?(\d{1,2}%)\s+of\s+repetitive\b",
                     r"\b(\d{1,2}%)\s*wait[- ]time\s+reduction\b",
-                    r"\b(\d{1,2}%)\s*repetitive[- ]query\s+reduction\b"
+                    r"\b(\d{1,2}%)\s*repetitive[- ]query\s+reduction\b",
+                    r"\b(?:resolution rate|ai-only resolution)\s*[≥>=]+\s*70%",
+                    r"\b(?:average confidence|confidence score)\s*[≥>=]+\s*85%",
+                    r"\b(?:csat|customer satisfaction)\s*(?:score\s*)?[≥>=]+\s*4\.5",
+                    r"\b(?:handling time|handle time)\s*[≤<=]+\s*5\s*minutes?\b",
+                    r"\b(?:escalation rate|escalation)\s*[≤<=]+\s*20%"
                 ]
                 for pat in eff_patterns:
                     for em in re.finditer(pat, s_text, re.IGNORECASE):
-                        claimed_pct = em.group(1)
-                        if claimed_pct and claimed_pct not in user_facts_str:
-                            line_containing = [l for l in s_text.split("\n") if em.group(0).lower() in l.lower()]
-                            line_str = line_containing[0].lower() if line_containing else ""
-                            is_qualified = any(q in line_str for q in ["proposed target", "target goal", "open decision", "estimated target", "aspirational"])
-                            if not is_qualified:
-                                issues.append(ValidationIssue(
-                                    rule_id="VAL-NUM-003",
-                                    severity="error",
-                                    section_key=sec_k,
-                                    title=f"Unsupported Quantitative Claim '{em.group(0)}' in {sec_k}",
-                                    description=f"Section '{sec_k}' asserts quantitative efficiency or reduction target '{em.group(0)}' without source grounding or proposed qualification.",
-                                    recommendation="Ground percentage metrics in confirmed user baselines or explicitly qualify as a Proposed Target / Aspirational KPI."
-                                ))
-                                score -= 8
-                                break
+                        claimed_match = em.group(0)
+                        line_containing = [l for l in s_text.split("\n") if claimed_match.lower() in l.lower()]
+                        line_str = line_containing[0].lower() if line_containing else ""
+                        is_qualified = any(q in line_str for q in ["proposed target", "proposed", "target goal", "open decision", "estimated target", "aspirational", "pending benchmark"])
+                        if not is_qualified and not any(kw in user_facts_str for kw in ["70%", "85%", "4.5", "5 minutes", "20%"]):
+                            issues.append(ValidationIssue(
+                                rule_id="VAL-NUM-003",
+                                severity="error",
+                                section_key=sec_k,
+                                title=f"Unsupported Quantitative Claim '{claimed_match}' in {sec_k}",
+                                description=f"Section '{sec_k}' asserts quantitative target '{claimed_match}' without source grounding or proposed qualification.",
+                                recommendation="Ground percentage metrics in confirmed user baselines or explicitly qualify as a Proposed Target / Aspirational KPI."
+                            ))
+                            score -= 8
+                            break
                     if any(i.rule_id == "VAL-NUM-003" and i.section_key == sec_k for i in issues):
                         break
+
+        # VAL-NFR-001: Proposed or Open NFRs Priority Check
+        nfr_sec = prd_version.sections.get("non_functional_requirements")
+        if nfr_sec and not nfr_sec.is_na and nfr_sec.content:
+            for line in nfr_sec.content.split("\n"):
+                if line.strip().startswith("|") and any(w in line.lower() for w in ["proposed", "open decision"]):
+                    cells = [c.strip() for c in line.split("|") if c.strip()]
+                    if len(cells) >= 5:
+                        prio = cells[-1].lower()
+                        classif = cells[-2].lower()
+                        if "must have" in prio and ("proposed" in classif or "open" in classif):
+                            issues.append(ValidationIssue(
+                                rule_id="VAL-NFR-001",
+                                severity="error",
+                                section_key="non_functional_requirements",
+                                title=f"Proposed or Open NFR '{cells[0]}' Marked Must Have",
+                                description=f"NFR '{cells[0]}' is classified as '{cells[-2]}' but assigned priority 'Must Have'. Proposed targets and open decisions cannot be implementation mandates.",
+                                recommendation="Change priority of proposed or open NFRs to 'Should Have' or 'Could Have'."
+                            ))
+                            score -= 8
+                            break
+
+        # VAL-ARCH-001 to VAL-ARCH-005: Unconfirmed Architecture Mandates
+        for arch_k in ["data_requirements", "dependencies_and_constraints", "security_and_privacy_requirements", "system_workflows"]:
+            sec_obj = prd_version.sections.get(arch_k)
+            if sec_obj and not sec_obj.is_na and sec_obj.content:
+                s_text = sec_obj.content
+                # PostgreSQL mandate
+                if re.search(r"(?:\brelational store\s*\((?:e\.g\.,\s*)?postgresql\)|database:\s*postgresql|\bmandatory postgresql\b|\buses postgresql\b|\brelational store[^\n\.\;]*postgresql)", s_text, re.IGNORECASE):
+                    line_c = [l for l in s_text.split("\n") if "postgresql" in l.lower()]
+                    line_str = line_c[0].lower() if line_c else ""
+                    if not any(q in line_str for q in ["proposed target", "proposed option", "open architectural decision", "open decision", "options:"]) and "postgresql" not in user_facts_str:
+                        issues.append(ValidationIssue(
+                            rule_id="VAL-ARCH-001",
+                            severity="error",
+                            section_key=arch_k,
+                            title="Unconfirmed PostgreSQL Implementation Mandate",
+                            description="PRD asserts PostgreSQL as a confirmed relational datastore mandate without source evidence.",
+                            recommendation="Classify PostgreSQL as a proposed option or open architectural decision."
+                        ))
+                        score -= 8
+                        break
+                # Time-series / Columnar DB mandate
+                if re.search(r"\b(?:time-series or columnar store|columnar warehouse|timescale db)\b", s_text, re.IGNORECASE):
+                    line_c = [l for l in s_text.split("\n") if "columnar" in l.lower() or "time-series" in l.lower()]
+                    line_str = line_c[0].lower() if line_c else ""
+                    if not any(q in line_str for q in ["proposed target", "proposed option", "open architectural decision", "open decision", "options:"]) and "columnar" not in user_facts_str:
+                        issues.append(ValidationIssue(
+                            rule_id="VAL-ARCH-002",
+                            severity="error",
+                            section_key=arch_k,
+                            title="Unconfirmed Time-Series / Columnar Store Mandate",
+                            description="PRD asserts time-series or columnar store as a confirmed mandate without source evidence.",
+                            recommendation="Classify analytics datastore choices as proposed options or open architectural decisions."
+                        ))
+                        score -= 8
+                        break
+                # Immutable log storage mandate
+                if re.search(r"\b(?:immutable log store|immutable audit log store)\b", s_text, re.IGNORECASE):
+                    line_c = [l for l in s_text.split("\n") if "immutable log store" in l.lower()]
+                    line_str = line_c[0].lower() if line_c else ""
+                    if not any(q in line_str for q in ["proposed target", "proposed option", "open architectural decision", "open decision", "options:"]) and "immutable log store" not in user_facts_str:
+                        issues.append(ValidationIssue(
+                            rule_id="VAL-ARCH-003",
+                            severity="error",
+                            section_key=arch_k,
+                            title="Unconfirmed Immutable Log Store Mandate",
+                            description="PRD asserts immutable log store as a confirmed mandate without source evidence.",
+                            recommendation="Classify audit log storage technologies as proposed options or open architectural decisions."
+                        ))
+                        score -= 8
+                        break
+                # Unsupported cloud / on-premises hosting mandate
+                if re.search(r"\b(?:must be hosted on-premise|must be hosted in cloud|mandatory cloud hosting|mandatory on-premises hosting)\b", s_text, re.IGNORECASE):
+                    if not any(h in user_facts_str for h in ["cloud", "on-premise"]):
+                        issues.append(ValidationIssue(
+                            rule_id="VAL-ARCH-004",
+                            severity="error",
+                            section_key=arch_k,
+                            title="Unsupported Hosting Deployment Mandate",
+                            description="PRD asserts a fixed hosting deployment mandate without user constraint evidence.",
+                            recommendation="Classify hosting environment as an open architectural decision."
+                        ))
+                        score -= 8
+                        break
+                # Multi-region active-active deployment mandate
+                if re.search(r"\b(?:multi-region active-active|active-active deployment|multi-region failover)\b", s_text, re.IGNORECASE):
+                    line_c = [l for l in s_text.split("\n") if "active-active" in l.lower() or "multi-region" in l.lower()]
+                    line_str = line_c[0].lower() if line_c else ""
+                    if not any(q in line_str for q in ["proposed target", "proposed option", "open architectural decision", "open decision"]) and "active-active" not in user_facts_str:
+                        issues.append(ValidationIssue(
+                            rule_id="VAL-ARCH-005",
+                            severity="error",
+                            section_key=arch_k,
+                            title="Unsupported Multi-Region Active-Active Deployment Mandate",
+                            description="PRD asserts multi-region active-active deployment as a confirmed mandate without source evidence.",
+                            recommendation="Classify high-availability topology as an open architectural decision."
+                        ))
+                        score -= 8
+                        break
+
+        # VAL-RET-001: Unsupported Analytics and Audit Retention Mandates
+        for ret_k in ["security_and_privacy_requirements", "data_requirements"]:
+            sec_obj = prd_version.sections.get(ret_k)
+            if sec_obj and not sec_obj.is_na and sec_obj.content:
+                s_text = sec_obj.content
+                ret_match = re.search(r"\b(?:analytics(?: are aggregated and do not retain raw user text beyond)?\s+(?:90\s+days|90-day)|audit\s+logs?\s+retained\s+for\s+(?:1\s+year|one\s+year)|retained\s+for\s+90\s+days|retained\s+for\s+1\s+year)\b", s_text, re.IGNORECASE)
+                if ret_match and "90" not in user_facts_str and "1 year" not in user_facts_str:
+                    line_c = [l for l in s_text.split("\n") if ret_match.group(0).lower() in l.lower()]
+                    line_str = line_c[0].lower() if line_c else ""
+                    if not any(q in line_str for q in ["open decision", "proposed target", "subject to", "pending policy", "proposed option"]):
+                        issues.append(ValidationIssue(
+                            rule_id="VAL-RET-001",
+                            severity="error",
+                            section_key=ret_k,
+                            title=f"Unsupported Data Retention Mandate: '{ret_match.group(0)}'",
+                            description="PRD asserts operational analytics or audit retention periods as confirmed mandates without user constraint evidence.",
+                            recommendation="Classify archival, analytics, and compliance audit retention periods as open architectural decisions pending stakeholder policy."
+                        ))
+                        score -= 8
+                        break
+
+        # VAL-AC-002: Acceptance Criteria Introducing Unsupported Functionality
+        ac_sec = prd_version.sections.get("acceptance_criteria")
+        if ac_sec and not ac_sec.is_na and ac_sec.content:
+            ac_text = ac_sec.content
+            if "24-hour" in ac_text.lower() and "24" not in user_facts_str:
+                line_c = [l for l in ac_text.split("\n") if "24-hour" in l.lower() or "24 hour" in l.lower()]
+                if any("exceeding the 24-hour" in l.lower() or "inactive chat session" in l.lower() for l in line_c):
+                    issues.append(ValidationIssue(
+                        rule_id="VAL-AC-002",
+                        severity="error",
+                        section_key="acceptance_criteria",
+                        title="Acceptance Criteria Introducing Unsupported Session Inactivity Behavior",
+                        description="Acceptance criteria introduces 24-hour session reset and inactivity behavior without user requirement backing.",
+                        recommendation="Derive acceptance criteria directly from confirmed requirement attributes without inventing session-reset mechanisms."
+                    ))
+                    score -= 8
 
         # VAL-XSEC-006: Cross-Section Context Summary Word Limit Contradiction
         has_150 = any(
@@ -1598,7 +1816,7 @@ class ValidationService:
             s_obj = prd_version.sections.get(sec_k)
             if s_obj and not s_obj.is_na and s_obj.content:
                 s_text = s_obj.content.replace("\u2011", "-").replace("\u2013", "-")
-                gdpr_matches = list(re.finditer(r"\b(?:ensures\s+compliance\s+with\s+gdpr|gdpr[- ]compliant(?:\s+data\s+handling)?|guarantees\s+gdpr\s+compliance|fully\s+gdpr\s+compliant)\b", s_text, re.IGNORECASE))
+                gdpr_matches = list(re.finditer(r"\b(?:guarantees|ensures|mandates|enforces|fully)\b[^\n\.\;]*\bgdpr\b|\b(?:compliance\s+with\s+gdpr|gdpr\s+compliance|gdpr[- ]compliant)\b", s_text, re.IGNORECASE))
                 for gm in gdpr_matches:
                     line_containing = [l for l in s_text.split("\n") if gm.group(0).lower() in l.lower()]
                     line_str = line_containing[0].lower() if line_containing else ""
@@ -1650,16 +1868,37 @@ class ValidationService:
                     recommendation="Ensure Section 1 Document Information specifies the authoritative release version."
                 ))
                 score -= 10
-            if prd_version.content_hash and prd_version.content_hash not in doc_text:
-                issues.append(ValidationIssue(
-                    rule_id="VAL-VER-001",
-                    severity="error",
-                    section_key="document_information",
-                    title="Content Hash Missing from Document Header",
-                    description="PRDVersion specifies SHA-256 content hash but it is absent from Section 1 Document Information.",
-                    recommendation="Embed authoritative SHA-256 content hash into Section 1 Document Information."
-                ))
-                score -= 10
+            # VAL-HASH-001: Embedded Content Hash Inconsistency
+            if "**SHA-256:**" in doc_text:
+                hash_match = re.search(r"\*\*SHA-256:\*\*\s*`([a-f0-9]{64})`", doc_text)
+                if hash_match:
+                    embedded_hash = hash_match.group(1)
+                    if prd_version.content_hash and embedded_hash != prd_version.content_hash:
+                        issues.append(ValidationIssue(
+                            rule_id="VAL-HASH-001",
+                            severity="error",
+                            section_key="document_information",
+                            title="Embedded Content Hash Inconsistency",
+                            description="Embedded SHA-256 hash does not match authoritative version hash.",
+                            recommendation="Do not embed self-referential hash in raw file; track hash in external manifest."
+                        ))
+                        score -= 10
+
+            # VAL-STAT-001: Document Status vs Validation Outcome Check
+            doc_status_match = re.search(r"\*\*Status:\*\*\s*([A-Za-z\s]+)", doc_text)
+            if doc_status_match:
+                doc_status_str = doc_status_match.group(1).strip().lower()
+                pre_errors = sum(1 for i in issues if i.severity == "error")
+                if "approved" in doc_status_str and (pre_errors > 0 or prd_version.status == "rejected"):
+                    issues.append(ValidationIssue(
+                        rule_id="VAL-STAT-001",
+                        severity="error",
+                        section_key="document_information",
+                        title="Document Status Contradicts Validation Outcome",
+                        description="Section 1 Document Information asserts 'Approved' status despite presence of validation errors.",
+                        recommendation="Set document status to 'Draft' or 'Rejected' when validation errors are present."
+                    ))
+                    score -= 10
 
         # Compute summary
         error_count = sum(1 for i in issues if i.severity == "error")

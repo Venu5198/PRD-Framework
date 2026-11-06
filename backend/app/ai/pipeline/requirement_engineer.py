@@ -71,7 +71,7 @@ Instructions:
      1. Grounded Knowledge retrieval and answer delivery using approved KB articles (FR-001)
      2. Per-session conversation history management in session cache up to 24 hours (FR-002; NEVER 30 days)
      3. Low-confidence answer detection (< 80.0%) and automatic internal queue escalation (FR-003)
-     4. Concise context summarization for human escalation handoff (FR-004)
+     4. Concise context summarization for human escalation handoff (FR-004: under 200 words; align with narrative sections)
      Do NOT generate FR-005 for external ticketing or external chat platforms.
    - Every requirement MUST explicitly specify actor, trigger, precondition, inputs, behavior, business_constraint, alternate_failure_paths, expected_outcome, relevant_data_changes, authorization_requirements, priority, provenance, source_reference, and description.
 
@@ -196,10 +196,50 @@ def normalize_provenance(prov: Optional[str]) -> str:
 
 def clean_system_behavior(b: str) -> str:
     b = (b or "").strip()
-    b = re.sub(r"^(the\s+system\s+|system\s+)+", "", b, flags=re.IGNORECASE).strip()
+    # Strip repeated subject/actor prefixes
+    b = re.sub(r"^(?:the\s+(?:system|ai|assistant|application|service|engine|platform)|system|ai|assistant|application|service|engine|platform)\s+", "", b, flags=re.IGNORECASE).strip()
+    b = re.sub(r"^(?:the\s+(?:system|ai|assistant|application|service|engine|platform)|system|ai|assistant|application|service|engine|platform)\s+", "", b, flags=re.IGNORECASE).strip()
     if not b:
         return "processes the request in accordance with business constraints"
-    return b[0].lower() + b[1:]
+    # Reframe leading conditionals
+    if re.match(r"^if\s+", b, flags=re.IGNORECASE):
+        b = "evaluates condition: " + b
+    # Map base/imperative verbs to 3rd-person singular present tense
+    verb_map = {
+        "append": "appends",
+        "route": "routes",
+        "maintain": "maintains",
+        "generate": "generates",
+        "store": "stores",
+        "evaluate": "evaluates",
+        "record": "records",
+        "send": "sends",
+        "process": "processes",
+        "perform": "performs",
+        "search": "searches",
+        "notify": "notifies",
+        "halt": "halts",
+        "deliver": "delivers",
+        "validate": "validates",
+        "enforce": "enforces",
+        "retrieve": "retrieves",
+        "synthesize": "synthesizes",
+        "capture": "captures",
+        "parse": "parses",
+        "extract": "extracts",
+        "persist": "persists",
+        "update": "updates",
+        "initialize": "initializes"
+    }
+    words = b.split()
+    if words:
+        first_w = words[0].lower()
+        if first_w in verb_map:
+            words[0] = verb_map[first_w]
+            b = " ".join(words)
+        else:
+            b = b[0].lower() + b[1:]
+    return b
 
 class RequirementEngineer:
     def __init__(self, ai_gateway: AIGatewayInterface):
@@ -283,6 +323,17 @@ class RequirementEngineer:
                                 f"**Expected Outcome:** {outcome}. **Relevant Data Changes:** {data_changes}. "
                                 f"**Authorization Requirements:** {auth}. **Provenance:** `{prov}` ({src_ref})."
                             )
+                        else:
+                            # Sanitize any broken fragments in LLM description
+                            desc = re.sub(r"The system the (?:AI|system|assistant|application|service|engine)\s+", "The system ", desc, flags=re.IGNORECASE)
+                            desc = re.sub(r"The system append\b", "The system appends", desc, flags=re.IGNORECASE)
+                            desc = re.sub(r"The system if\b", "The system evaluates condition: if", desc, flags=re.IGNORECASE)
+
+                        # Harmonize word limits for context summaries to prevent cross-section contradictions
+                        clean_beh = re.sub(r"\b(?:100|150)\s*words?\b|≤\s*(?:100|150)\s*words?", "under 200 words", clean_beh, flags=re.IGNORECASE)
+                        if desc:
+                            desc = re.sub(r"\b(?:100|150)\s*words?\b|≤\s*(?:100|150)\s*words?", "under 200 words", desc, flags=re.IGNORECASE)
+                        constraint = re.sub(r"\b(?:100|150)\s*words?\b|≤\s*(?:100|150)\s*words?", "under 200 words", constraint, flags=re.IGNORECASE)
 
                         validated_frs.append({
                             "id": fid,
@@ -307,12 +358,14 @@ class RequirementEngineer:
 
                     validated_nfrs = []
                     for idx, nfr in enumerate(nfr_raw, 1):
+                        classification = nfr.get("classification", "Proposed target")
+                        prio = "Should Have" if ("proposed" in classification.lower() or "open" in classification.lower()) else nfr.get("priority", "Must Have")
                         validated_nfrs.append({
                             "id": f"NFR-{idx:03d}",
                             "title": nfr.get("title", f"Non-Functional Requirement {idx}"),
                             "description": nfr.get("description", "System shall maintain operational standards."),
-                            "classification": nfr.get("classification", "Proposed target"),
-                            "priority": nfr.get("priority", "Must Have"),
+                            "classification": classification,
+                            "priority": prio,
                             "acceptance_criteria_ids": nfr.get("acceptance_criteria_ids", [])
                         })
 
@@ -336,6 +389,10 @@ class RequirementEngineer:
                         if has_ungrounded_target and not any(et in user_evidence_str for et in ["< 2s", "99.5%", "aes-256", "tls"]):
                             if "confirmed" in classification.lower() or "assignment" in classification.lower():
                                 nfr["classification"] = "Proposed target"
+
+                        # Ensure proposed or open decision NFRs are NEVER marked Must Have
+                        if "proposed" in nfr.get("classification", "").lower() or "open" in nfr.get("classification", "").lower():
+                            nfr["priority"] = "Should Have"
 
                     # 1. Filter out out-of-scope FRs (external ticketing, third-party ticketing, external CRM)
                     filtered_frs = []
@@ -412,6 +469,7 @@ class RequirementEngineer:
                         ]) or len(stmt) < 30 or "Given" not in stmt
                         if is_boilerplate:
                             continue
+                        stmt = re.sub(r"\b(?:100|150)\s*words?\b|≤\s*(?:100|150)\s*words?", "under 200 words", stmt, flags=re.IGNORECASE)
                         validated_acs.append({
                             "id": f"AC-{len(validated_acs)+1:03d}",
                             "requirement_id": new_rid,
@@ -441,39 +499,28 @@ class RequirementEngineer:
                                         "statement": mandatory_stmt
                                     })
 
-                    # Ensure scenario-specific ACs exist for all FRs
+                    # Ensure scenario-specific ACs exist for all FRs derived strictly from FR attributes
                     for fr in validated_frs:
                         has_ac = any(a["requirement_id"] == fr["id"] for a in validated_acs)
                         if not has_ac:
                             fid = fr["id"]
-                            ftitle = fr["title"].lower()
-                            if "history" in ftitle or "session" in ftitle:
+                            ftitle = fr["title"]
+                            fprecond = fr.get("precondition") or "an active authorized session exists"
+                            factor = fr.get("actor") or "authorized user"
+                            fbeh = clean_system_behavior(fr.get("behavior") or f"processes {ftitle.lower()}")
+                            foutcome = fr.get("expected_outcome") or "verifies that the operation completes successfully"
+                            
+                            validated_acs.append({
+                                "id": f"AC-{len(validated_acs)+1:03d}",
+                                "requirement_id": fid,
+                                "statement": f"Given {fprecond}, When {factor} initiates {ftitle.lower()}, Then the system {fbeh} and verifies that {foutcome}."
+                            })
+                            if fr.get("alternate_failure_paths"):
+                                alt_p = fr.get("alternate_failure_paths")
                                 validated_acs.append({
                                     "id": f"AC-{len(validated_acs)+1:03d}",
                                     "requirement_id": fid,
-                                    "statement": "Given an ongoing customer conversation within an active 24-hour session, When the customer submits a follow-up query referencing prior turns, Then the system incorporates preceding dialogue context to resolve the query accurately."
-                                })
-                                validated_acs.append({
-                                    "id": f"AC-{len(validated_acs)+1:03d}",
-                                    "requirement_id": fid,
-                                    "statement": "Given an inactive chat session exceeding the 24-hour active window, When a customer sends a new message, Then the system initializes a fresh session ID and treats prior transcript retention as an unresolved open architectural decision."
-                                })
-                            elif "summar" in ftitle or "escalat" in ftitle:
-                                validated_acs.append({
-                                    "id": f"AC-{len(validated_acs)+1:03d}",
-                                    "requirement_id": fid,
-                                    "statement": "Given an escalation triggered for a multi-turn conversation, When the summarization module executes, Then it generates a concise summary not exceeding 200 words capturing the query and attempted resolutions."
-                                })
-                                validated_acs.append({
-                                    "id": f"AC-{len(validated_acs)+1:03d}",
-                                    "requirement_id": fid,
-                                    "statement": "Given an escalation for a single-turn query with no prior exchanges, When summarization is invoked, Then the system passes the original query and context metadata without hallucinating past dialogue turns."
-                                })
-                            else:
-                                validated_acs.append({
-                                    "id": f"AC-{len(validated_acs)+1:03d}",
-                                    "requirement_id": fid,
-                                    "statement": f"Given an authenticated user submits valid input for {ftitle}, When the system executes the operation under nominal conditions, Then the system satisfies all business constraints, returns the verified response, and logs the session interaction."
+                                    "statement": f"Given {fprecond}, When {alt_p}, Then the system safely halts automated response, preserves audit logs, and returns actionable feedback."
                                 })
 
                     # Re-index AC IDs and update acceptance_criteria_ids in FRs

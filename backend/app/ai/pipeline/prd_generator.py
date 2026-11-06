@@ -6,6 +6,7 @@ from app.ai.gateway import AIGatewayInterface
 from app.models.analysis import AnalysisRecord
 from app.models.clarification import ClarificationSession
 from app.models.prd import PRDSectionContent, SECTION_TITLES, CANONICAL_SECTIONS
+from app.ai.pipeline.requirement_engineer import clean_system_behavior
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ Generate production-ready technical specifications for the following 8 sections 
 3. "integration_requirements": External systems, APIs, or protocols explicitly required. If none specified, state that MVP operates self-contained and list prospective integrations as open architectural considerations.
 4. "security_and_privacy_requirements": Role-based access control, data encryption in transit/rest, audit logging, and domain-specific privacy controls. Do not invent arbitrary certifications.
 5. "dependencies_and_constraints": Platform, hosting, operating, or institutional constraints directly impacting '{title}'.
-6. "success_metrics": Quantifiable, testable KPIs measuring product effectiveness, user adoption, resolution speed, or operational quality.
+6. "success_metrics": Quantifiable, testable KPIs measuring product effectiveness grounded strictly in confirmed product capabilities (e.g. 100% adherence to confidence threshold gating, 100% citation grounding for delivered answers). DO NOT invent ungrounded percentage promises (e.g. "70% AI-only resolution", "85% average confidence", "40% faster", "CSAT 4.5/5", "handling time <= 5 min", "response time <= 2s") unless an exact baseline metric was explicitly provided in user input. Any operational targets must be explicitly labelled "[Proposed Target: Pending formal benchmark]".
 7. "release_considerations": Phased rollout, alpha/beta validation, data migration, and operational handoff.
 8. "appendix_and_glossary": Domain-specific terms, acronyms, and operational definitions relevant to '{domain}'.
 
@@ -90,12 +91,12 @@ STRICT CONSTRAINTS:
 - ZERO self-referential mentions of the PRD Framework, Ollama timeouts, or requirements documentation tools.
 - Everything must be written from the perspective of an engineering team implementing '{title}'.
 - CONFIDENCE METRIC REPRESENTATION: Represent confidence scores strictly on a 0% to 100% scale (with the 80.0% threshold). Never mix 0-1 and 0-100 scales.
-- DATA RETENTION CONSISTENCY: Distinguish between active session transcripts (retained for session duration / up to 24 hours), operational analytics metrics (retained for 90 days), and compliance audit logs (retained for 1 year). Do not define conflicting retention periods for the same data entity.
+- DATA RETENTION CONSISTENCY: Retain session dialogue transcripts strictly for active session duration per confirmed input. Operational data retention duration for archives, analytics, or compliance audits is an UNRESOLVED OPEN ARCHITECTURAL DECISION pending stakeholder policy. Do NOT invent 30-day, 90-day, or 1-year retention mandates unless explicitly provided in user input.
 - CHANNELS: Voice, telephony, SMS, and video channels are out of scope. Do not include voice integration in system workflows or integrations.
 - TICKETING: MVP uses an internal escalation queue with context summary. External ticketing APIs (Zendesk, Jira, Freshdesk) are prospective future considerations / open decisions, not mandatory MVP requirements.
-- ARCHITECTURAL DECISIONS & FAILOVER: Classify databases, runtimes, failover schemes, and hosting choices as 'Proposed targets' or 'Open Architectural Decisions'. NEVER assert automatic multi-zone hot standby failover, mandatory PostgreSQL, InfluxDB, or RabbitMQ as firm confirmed requirements.
-- USER WORKFLOWS & JOURNEYS: Do NOT invent manager approval workflows, manager review dashboards, or human agent answer editing before sending. Stick strictly to internal queue routing and context handoff.
-- NO UNAPPROVED TECHNOLOGY MANDATES: Database engines, cloud providers, and deployment platforms not explicitly specified by user input must be classified as 'Proposed architectural targets' or 'Open architectural decisions', never as unconfirmed mandatory commitments.
+- ARCHITECTURAL DECISIONS & FAILOVER: Classify databases, runtimes, failover schemes, and hosting choices as '[Proposed Option: Technology recommendation subject to infrastructure team review]' or '[Open Architectural Decision]'. NEVER assert automatic multi-zone hot standby failover, mandatory PostgreSQL, InfluxDB, or RabbitMQ as firm confirmed requirements.
+- USER WORKFLOWS & JOURNEYS: Do NOT invent manager approval workflows, manager review dashboards, customer feedback collection, ticket closure/auto-close, or human agent answer editing before sending. Stick strictly to internal queue routing and context handoff.
+- NO UNAPPROVED TECHNOLOGY MANDATES: Specific database engines (PostgreSQL, MongoDB, Redis, InfluxDB), container orchestrators (Docker, Kubernetes), runtimes (Python 3.11), and deployment platforms not explicitly specified by user input must be classified as '[Proposed Option]' or '[Open Architectural Decision]', never as unconfirmed mandatory commitments.
 - NO UNGROUNDED COMPLIANCE CLAIMS: Do not assert GDPR, HIPAA, or FERPA certifications as confirmed facts unless explicitly mandated in user input. Mark regulatory compliance as subject to institutional legal review.
 
 Return ONLY a valid JSON object matching:
@@ -157,13 +158,12 @@ class PRDGenerator:
     def __init__(self, ai_gateway: AIGatewayInterface):
         self.ai = ai_gateway
 
-    def _clean_mermaid_text(self, text: str, max_words: int = 10) -> str:
-        """Sanitizes text for Mermaid sequence diagram lines without abrupt character truncation."""
+    def _clean_mermaid_text(self, text: str) -> str:
+        """Sanitizes text for Mermaid sequence diagram lines without abrupt character or word truncation."""
         t = re.sub(r"[\r\n;\"']+", " ", text).strip()
         t = re.sub(r"\b(?:ticket creation|ticket ID|queued ticket|opens the queued ticket|marks the ticket as resolved|close tickets|resolves tickets|ticket generation)\b", "internal escalation queue handoff", t, flags=re.IGNORECASE)
-        words = t.split()
-        if len(words) > max_words:
-            t = " ".join(words[:max_words])
+        # Strip trailing prepositions, conjunctions, or dangling tokens
+        t = re.sub(r"\s+(?:of|the|a|an|in|on|at|by|for|with|and|or|if|to|from)\s*$", "", t, flags=re.IGNORECASE).strip()
         return t
 
     def _build_mermaid_diagram(
@@ -193,14 +193,26 @@ class PRDGenerator:
 
         if journeys:
             for j in journeys[:5]:
-                actor_raw = j.get("actor", actors[0])
-                if "manager" in actor_raw.lower():
-                    actor_raw = actors[-1]
-                actor_alias = clean_map.get(actor_raw, list(clean_map.values())[0])
+                actor_raw = j.get("actor", actors[0]).strip()
                 act_action = self._clean_mermaid_text(j.get("actor_action", "Submits request"))
                 sys_resp = self._clean_mermaid_text(j.get("system_response", "Processes request and updates state"))
-                lines.append(f"    {actor_alias}->>{sys_alias}: {act_action}")
-                lines.append(f"    {sys_alias}-->>{actor_alias}: {sys_resp}")
+
+                # Check if actor is an automated system or AI component
+                is_system_actor = (
+                    any(w in actor_raw.lower() for w in ["system", "ai", "engine", "service", "assistant", "bot", "algorithm"])
+                    or actor_raw.lower() == sys_label.lower()
+                )
+
+                if is_system_actor:
+                    # System executing internal operation
+                    lines.append(f"    {sys_alias}->>{sys_alias}: {act_action}")
+                    first_human = list(clean_map.values())[0]
+                    lines.append(f"    {sys_alias}-->>{first_human}: {sys_resp}")
+                else:
+                    actor_alias = clean_map.get(actor_raw, list(clean_map.values())[0])
+                    lines.append(f"    {actor_alias}->>{sys_alias}: {act_action}")
+                    lines.append(f"    {sys_alias}-->>{actor_alias}: {sys_resp}")
+
                 if j.get("error_or_edge_case"):
                     edge = self._clean_mermaid_text(j.get("error_or_edge_case"))
                     lines.append(f"    Note over {sys_alias}: Edge Case: {edge}")
@@ -602,7 +614,7 @@ class PRDGenerator:
         analysis: AnalysisRecord,
         clarification_session: Optional[ClarificationSession],
         requirements_data: Dict[str, Any],
-        version_number: str = "v2.4.3",
+        version_number: str = "v2.4.4",
         job_id: Optional[str] = None
     ) -> Dict[str, PRDSectionContent]:
         """
@@ -633,6 +645,9 @@ class PRDGenerator:
             precond = item.get("precondition") or f"Actor has active authorized session for {title.lower()}"
             inputs = item.get("inputs") or f"Standard schema payload for {title.lower()}"
             behavior = item.get("behavior") or item.get("description", "")
+            clean_beh = clean_system_behavior(behavior)
+            if not clean_beh.lower().startswith("the system"):
+                clean_beh = f"The system {clean_beh}"
             constraint = item.get("business_constraint") or (analysis.explicit_constraints[0] if analysis.explicit_constraints else "Enforces strict domain validation rules")
             alt_paths = item.get("alternate_failure_paths") or "Halt transaction safely and notify actor with diagnostic code"
             outcome = item.get("expected_outcome") or "State transition is recorded and verified confirmation is returned"
@@ -649,7 +664,7 @@ class PRDGenerator:
                 f"- **Trigger:** {trigger}\n"
                 f"- **Preconditions:** {precond}\n"
                 f"- **Inputs:** {inputs}\n"
-                f"- **System Behavior:** {behavior}\n"
+                f"- **System Behavior:** {clean_beh}\n"
                 f"- **Business Constraints:** {constraint}\n"
                 f"- **Alternate & Failure Paths:** {alt_paths}\n"
                 f"- **Expected Outcome:** {outcome}\n"
@@ -671,7 +686,8 @@ class PRDGenerator:
                 if "hot standby" in desc.lower() or "automatic failover" in desc.lower():
                     desc = re.sub(r",?\s*(?:employing\s+)?automatic\s+failover\s+to\s+(?:a\s+)?hot\s+standby\s+instance\s+in\s+a\s+different\s+availability\s+zone", " with standard error logging [Open Architectural Decision: Multi-zone failover pending infrastructure review]", desc, flags=re.IGNORECASE)
                     desc = re.sub(r"employing\s+automatic\s+failover\s+to\s+(?:a\s+)?hot\s+standby[^\.,]*", "with local retry queuing [Open Architectural Decision: Standby failover scheme pending review]", desc, flags=re.IGNORECASE)
-                nfr_text += f"| **{item.get('id')}** | {item.get('title')} | {desc} | {classification} | {item.get('priority')} |\n"
+                prio = "Should Have" if ("proposed" in classification.lower() or "open" in classification.lower()) else item.get("priority", "Must Have")
+                nfr_text += f"| **{item.get('id')}** | {item.get('title')} | {desc} | {classification} | {prio} |\n"
 
         # Format Business Rules
         br_text = "| ID | Rule Title | Operational Statement | Provenance | Source Reference | Rationale | Confirmation Required |\n|---|---|---|---|---|---|---|\n"
@@ -826,10 +842,10 @@ class PRDGenerator:
                 content=(
                     f"**Document Title:** Product Requirements Document for {project_title}\n\n"
                     f"**Document ID:** PRD-{analysis.project_id[:8].upper() if analysis.project_id else 'PROJECT'}\n\n"
-                    f"**Version:** 1.0 (Draft)\n\n"
+                    f"**Version:** {version_number}\n\n"
                     f"**Target Domain:** {analysis.problem_domain}\n\n"
                     f"**Product Category:** {analysis.product_category}\n\n"
-                    f"**Status:** Under Active Review"
+                    f"**Status:** Draft"
                 )
             ),
             "executive_summary": PRDSectionContent(

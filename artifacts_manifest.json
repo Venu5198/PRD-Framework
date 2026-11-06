@@ -1,0 +1,35 @@
+{
+  "phase": "2.4.4",
+  "generated_at": "2026-11-06T04:18:09Z",
+  "project_id": "6aed54a7fd0f6c0eb4d90244",
+  "job_id": "d8b26147-f5ce-434c-a30c-6ebdef8651ae",
+  "prd_version_id": "6aed54fe93705d01e3fbd27a",
+  "version_number": "v2.4.4",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "force_mock": false,
+  "worker_id": "worker-4e98f4270e16-1-c5609b",
+  "validation": {
+    "score": 97,
+    "verdict": "APPROVED",
+    "error_count": 0,
+    "warning_count": 0
+  },
+  "artifacts": {
+    "markdown": {
+      "filename": "PRD_Customer_Support_v2_4_4.md",
+      "size_bytes": 39994,
+      "sha256": "70c32af6fa6ae55d4652190e46d442c1ad8e1a98effba4d685dcba97d553cf3f"
+    },
+    "docx": {
+      "filename": "PRD_Customer_Support_v2_4_4.docx",
+      "size_bytes": 49097,
+      "sha256": "5c929549bb36e0830ccf5ed5cd0ba5bf6194ffdfe65048fbf38448bc7c523236"
+    },
+    "pdf": {
+      "filename": "PRD_Customer_Support_v2_4_4.pdf",
+      "size_bytes": 30754,
+      "sha256": "2519335b305d4efebecc4a29f97721dd739b744aa5b8a8025afc77c29663d4c7"
+    }
+  }
+}

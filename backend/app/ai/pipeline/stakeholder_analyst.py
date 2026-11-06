@@ -144,8 +144,9 @@ class StakeholderAnalyst:
                         val = re.sub(r"\b(?:quick-edit field for the rep to modify the answer before sending|quick-edit field for the rep to modify|rep's edit conflicts with policy|rep's edit|agent editing)\b", "representative reviews customer transcript and context summary", val, flags=re.IGNORECASE)
                         val = re.sub(r"\b(?:system warns and requires manager approval|requires manager approval|managerial sign-off|manager sign-off|manager approval)\b", "system logs escalation review in audit log", val, flags=re.IGNORECASE)
                         val = re.sub(r"\b(?:daily dashboard for ai accuracy rates|daily dashboard for ai|dashboard for ai accuracy|daily dashboard)\b", "internal queue triage view", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:confirms ticket creation|generates a ticket ID|ticket ID|queued ticket|opens the queued ticket|marks the ticket as resolved|close tickets|resolves tickets|ticket generation)\b", "routes query to human escalation queue with context summary", val, flags=re.IGNORECASE)
+                        val = re.sub(r"\b(?:confirms ticket creation|ticket creation|generates a ticket ID|ticket ID|queued ticket|opens the queued ticket|marks the ticket as resolved|close tickets|resolves tickets|ticket generation|escalation ticket|a ticket|the ticket)\b", "escalation queue entry", val, flags=re.IGNORECASE)
                         val = re.sub(r"\b(?:support manager|customer support manager)\b", "Support Representative", val, flags=re.IGNORECASE)
+                        val = re.sub(r"\b(?:expected wait time|estimated wait time|informs the customer of an expected wait time|informs the user of the expected wait time)\b", "informs the user that the inquiry is queued for representative review", val, flags=re.IGNORECASE)
                         step_dict[field] = val
                 clean_journeys.append(UserJourneyStep(**step_dict))
             journeys = clean_journeys
@@ -265,15 +266,15 @@ class StakeholderAnalyst:
                     stage_name="3. Low-Confidence Interception & Escalation",
                     actor="Customer",
                     actor_action="Submits an ambiguous or complex inquiry resulting in evaluated confidence < 80.0%.",
-                    system_response="Suppresses automated candidate answer, flags query as low-confidence, compiles structured 3-bullet summary, and transfers ticket to human queue.",
-                    error_or_edge_case="If all human agents are currently engaged, notifies customer of queue status with option to hold or leave an asynchronous message."
+                    system_response="Suppresses automated candidate answer, flags query as low-confidence, compiles structured 3-bullet summary, and transfers inquiry to human escalation queue.",
+                    error_or_edge_case="If human agents are currently busy, notifies customer of escalation queue status without unverified wait-time promises."
                 ),
                 UserJourneyStep(
                     stage_name="4. Human Representative Resolution & Context Handoff",
                     actor="Customer Service Representative",
-                    actor_action="Accepts escalated ticket on dashboard and reviews complete conversation transcript with automated 3-bullet summary.",
-                    system_response="Renders full dialogue history seamlessly without prompting customer to re-enter issue details, and logs resolution disposition upon ticket closure.",
-                    error_or_edge_case="If representative disconnects prematurely, preserves ticket in active triage queue with session audit history."
+                    actor_action="Accesses escalated inquiry on interface and reviews complete conversation transcript with automated 3-bullet summary.",
+                    system_response="Renders full dialogue history seamlessly without prompting customer to re-enter issue details, and logs resolution disposition upon session completion.",
+                    error_or_edge_case="If representative disconnects prematurely, preserves inquiry in active escalation queue with session audit history."
                 )
             ]
 
@@ -326,7 +327,7 @@ class StakeholderAnalyst:
                 actor=sec_role,
                 actor_action="Reviews unresolved query and full conversation history.",
                 system_response=f"Transfers session to human agent and updates knowledge base.",
-                error_or_edge_case="If agent is offline, queues ticket with SLA notification."
+                error_or_edge_case="If agent is offline, enqueues inquiry for asynchronous follow-up."
             )
         ]
 

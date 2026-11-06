@@ -306,10 +306,10 @@ class PRDService:
         )
         duration = time.time() - start_time
 
-        # Extract content hash from document_information
-        import re
-        hash_match = re.search(r"Content Hash \(SHA-256\):\*\* `([a-f0-9]{64})`", sections.get("document_information", PRDSectionContent(key="d", title="d", content="")).content)
-        content_hash = hash_match.group(1) if hash_match else None
+        # Compute canonical content hash of the version's sections
+        import hashlib
+        canonical_content = "".join(f"## {sections[k].title}\n\n{sections[k].content}\n\n" for k in sorted(sections.keys()))
+        content_hash = hashlib.sha256(canonical_content.encode("utf-8")).hexdigest()
 
         # Create immutable version record
         version_data = {
