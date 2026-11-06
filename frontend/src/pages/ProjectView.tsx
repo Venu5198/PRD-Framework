@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Project,
   AnalysisRecord,
@@ -28,7 +28,9 @@ import {
   Send,
   Clock,
   Square,
-  Loader2
+  Loader2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { PRDDocumentViewer } from '../components/document/PRDDocumentViewer';
 
@@ -68,6 +70,17 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
   const [jobTimer, setJobTimer] = useState<number>(0);
 
   const [editingSection, setEditingSection] = useState<PRDSectionContent | null>(null);
+
+  const tabContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (tabContainerRef.current) {
+      const activeEl = tabContainerRef.current.querySelector(`[data-tab="${activeTab}"]`) as HTMLElement;
+      if (activeEl && typeof activeEl.scrollIntoView === 'function') {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    }
+  }, [activeTab]);
 
   // Initial Data Load
   const loadProjectData = async () => {
@@ -386,101 +399,155 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex border-b border-slate-200 overflow-x-auto space-x-1 text-sm font-semibold">
+      <div className="relative group border-b border-slate-200">
         <button
-          onClick={() => setActiveTab('input')}
-          className={`px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition ${
-            activeTab === 'input'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
+          onClick={() => {
+            if (tabContainerRef.current) {
+              tabContainerRef.current.scrollBy({ left: -200, behavior: 'smooth' });
+            }
+          }}
+          className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 p-1 bg-white/90 shadow border border-slate-200 rounded-full text-slate-500 hover:text-slate-800 transition"
+          aria-label="Scroll tabs left"
         >
-          <Upload className="w-4 h-4" />
-          <span>1. Submit Idea</span>
+          <ChevronLeft className="w-4 h-4" />
         </button>
 
-        <button
-          onClick={() => setActiveTab('analysis')}
-          className={`px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition ${
-            activeTab === 'analysis'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
+        <div
+          ref={tabContainerRef}
+          role="tablist"
+          className="flex overflow-x-auto space-x-1 text-sm font-semibold scroll-smooth scrollbar-none px-1 sm:px-6"
         >
-          <Sparkles className="w-4 h-4" />
-          <span>2. AI Analysis</span>
-        </button>
+          <button
+            role="tab"
+            data-tab="input"
+            aria-selected={activeTab === 'input'}
+            onClick={() => setActiveTab('input')}
+            className={`px-3.5 sm:px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition shrink-0 ${
+              activeTab === 'input'
+                ? 'border-sky-600 text-sky-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Upload className="w-4 h-4 shrink-0" />
+            <span>1. Submit Idea</span>
+          </button>
+
+          <button
+            role="tab"
+            data-tab="analysis"
+            aria-selected={activeTab === 'analysis'}
+            onClick={() => setActiveTab('analysis')}
+            className={`px-3.5 sm:px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition shrink-0 ${
+              activeTab === 'analysis'
+                ? 'border-sky-600 text-sky-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 shrink-0" />
+            <span>2. AI Analysis</span>
+          </button>
+
+          <button
+            role="tab"
+            data-tab="clarifications"
+            aria-selected={activeTab === 'clarifications'}
+            onClick={() => setActiveTab('clarifications')}
+            className={`px-3.5 sm:px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition shrink-0 ${
+              activeTab === 'clarifications'
+                ? 'border-sky-600 text-sky-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <HelpCircle className="w-4 h-4 shrink-0" />
+            <span>3. Clarifications</span>
+          </button>
+
+          <button
+            role="tab"
+            data-tab="prd"
+            aria-selected={activeTab === 'prd'}
+            onClick={() => setActiveTab('prd')}
+            className={`px-3.5 sm:px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition shrink-0 ${
+              activeTab === 'prd'
+                ? 'border-sky-600 text-sky-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <FileText className="w-4 h-4 shrink-0" />
+            <span>4. PRD Document</span>
+          </button>
+
+          <button
+            role="tab"
+            data-tab="requirements"
+            aria-selected={activeTab === 'requirements'}
+            onClick={() => setActiveTab('requirements')}
+            className={`px-3.5 sm:px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition shrink-0 ${
+              activeTab === 'requirements'
+                ? 'border-sky-600 text-sky-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Layers className="w-4 h-4 shrink-0" />
+            <span>5. Requirements Matrix</span>
+          </button>
+
+          <button
+            role="tab"
+            data-tab="validation"
+            aria-selected={activeTab === 'validation'}
+            onClick={() => setActiveTab('validation')}
+            className={`px-3.5 sm:px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition shrink-0 ${
+              activeTab === 'validation'
+                ? 'border-sky-600 text-sky-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 shrink-0" />
+            <span>6. Quality Validation</span>
+          </button>
+
+          <button
+            role="tab"
+            data-tab="history"
+            aria-selected={activeTab === 'history'}
+            onClick={() => setActiveTab('history')}
+            className={`px-3.5 sm:px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition shrink-0 ${
+              activeTab === 'history'
+                ? 'border-sky-600 text-sky-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <History className="w-4 h-4 shrink-0" />
+            <span>7. Versions</span>
+          </button>
+
+          <button
+            role="tab"
+            data-tab="export"
+            aria-selected={activeTab === 'export'}
+            onClick={() => setActiveTab('export')}
+            className={`px-3.5 sm:px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition shrink-0 ${
+              activeTab === 'export'
+                ? 'border-sky-600 text-sky-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Download className="w-4 h-4 shrink-0" />
+            <span>8. Export</span>
+          </button>
+        </div>
 
         <button
-          onClick={() => setActiveTab('clarifications')}
-          className={`px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition ${
-            activeTab === 'clarifications'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
+          onClick={() => {
+            if (tabContainerRef.current) {
+              tabContainerRef.current.scrollBy({ left: 200, behavior: 'smooth' });
+            }
+          }}
+          className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 p-1 bg-white/90 shadow border border-slate-200 rounded-full text-slate-500 hover:text-slate-800 transition"
+          aria-label="Scroll tabs right"
         >
-          <HelpCircle className="w-4 h-4" />
-          <span>3. Clarifications</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('prd')}
-          className={`px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition ${
-            activeTab === 'prd'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>4. PRD Document</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('requirements')}
-          className={`px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition ${
-            activeTab === 'requirements'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          <span>5. Requirements Matrix</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('validation')}
-          className={`px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition ${
-            activeTab === 'validation'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <ShieldCheck className="w-4 h-4" />
-          <span>6. Quality Validation</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition ${
-            activeTab === 'history'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <History className="w-4 h-4" />
-          <span>7. Versions</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('export')}
-          className={`px-4 py-2.5 border-b-2 whitespace-nowrap flex items-center space-x-2 transition ${
-            activeTab === 'export'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Download className="w-4 h-4" />
-          <span>8. Export</span>
+          <ChevronRight className="w-4 h-4" />
         </button>
       </div>
 
@@ -988,37 +1055,106 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  Validation Findings ({validationReport.issues.length})
-                </h3>
+              {/* Grouped Validation Findings by 10 Categories */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Validation Findings by Dimension ({validationReport.issues.length})
+                  </h3>
+                  {validationReport.total_claims !== undefined && (
+                    <span className="text-xs text-slate-500 font-mono">
+                      {validationReport.supported_claims || 0} / {validationReport.total_claims || 0} Atomic Claims Verified
+                    </span>
+                  )}
+                </div>
+
                 {validationReport.issues.length === 0 ? (
                   <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 font-medium">
-                    All quality gates passed! Zero errors and zero unmapped requirements detected.
+                    All quality gates passed! Zero errors and zero unmapped requirements detected across all 10 dimensions.
                   </div>
                 ) : (
-                  validationReport.issues.map((iss, i) => (
-                    <div
-                      key={i}
-                      className={`p-4 rounded-lg border text-xs space-y-1.5 ${
-                        iss.severity === 'error'
-                          ? 'bg-rose-50/60 border-rose-200 text-rose-900'
-                          : iss.severity === 'warning'
-                          ? 'bg-amber-50/60 border-amber-200 text-amber-900'
-                          : 'bg-slate-50 border-slate-200 text-slate-800'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2 font-bold">
-                        <span className="font-mono">{iss.rule_id}</span>
-                        <span>•</span>
-                        <span>{iss.title}</span>
+                  [
+                    'Structural Completeness',
+                    'Provenance & Grounding',
+                    'Semantic Entailment',
+                    'Cross-Section Consistency',
+                    'Numerical & SLA Governance',
+                    'Requirements & AC Coherence',
+                    'Data & Security Governance',
+                    'Export Artifact Integrity',
+                    'Workflow & Domain Realism',
+                    'Regulatory & Compliance'
+                  ].map((category) => {
+                    const categoryIssues = validationReport.issues.filter((iss) => {
+                      const r = iss.rule_id.toUpperCase();
+                      if (category === 'Structural Completeness') return r.includes('VAL-SEC-001') || r.includes('VAL-SEC-002') || r.includes('VAL-STR-') || r.includes('VAL-DIA-') || r.includes('VAL-ENG-008');
+                      if (category === 'Provenance & Grounding') return r.includes('VAL-PROV-') || r.includes('VAL-GRD-') || r.includes('VAL-CLAIM-');
+                      if (category === 'Numerical & SLA Governance') return r.includes('VAL-NUM-') || r.includes('VAL-SLA-') || r.includes('VAL-TGT-');
+                      if (category === 'Cross-Section Consistency') return r.includes('VAL-SCP-') || r.includes('VAL-XSEC-') || r.includes('VAL-COH-') || r.includes('VAL-DUP-');
+                      if (category === 'Requirements & AC Coherence') return r.includes('VAL-REQ-') || r.includes('VAL-AC-') || r.includes('VAL-TRC-') || r.includes('VAL-ENG-');
+                      if (category === 'Data & Security Governance') return r.includes('VAL-DAT-') || r.includes('VAL-PRIV-') || r.includes('VAL-CYBER-') || (r.includes('VAL-SEC-') && !r.startsWith('VAL-SEC-00'));
+                      if (category === 'Export Artifact Integrity') return r.includes('VAL-EXP-') || r.includes('VAL-HASH-') || r.includes('VAL-DOC-') || r.includes('VAL-STATUS-') || r.includes('VAL-STAT-');
+                      if (category === 'Workflow & Domain Realism') return r.includes('VAL-WRK-') || r.includes('VAL-DOM-') || r.includes('VAL-UJ-');
+                      if (category === 'Regulatory & Compliance') return r.includes('VAL-REG-') || r.includes('VAL-CMP-') || r.includes('VAL-LEGAL-');
+                      return r.includes('VAL-SEM-') || r.includes('VAL-ENT-') || r.includes('VAL-AMB-');
+                    });
+
+                    if (categoryIssues.length === 0) return null;
+
+                    return (
+                      <div key={category} className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                        <div className="bg-slate-100/80 px-4 py-2.5 flex items-center justify-between border-b border-slate-200">
+                          <span className="text-xs font-bold text-slate-800">{category}</span>
+                          <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                            {categoryIssues.length} finding{categoryIssues.length > 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <div className="divide-y divide-slate-100 p-2 space-y-2">
+                          {categoryIssues.map((iss, i) => (
+                            <div
+                              key={i}
+                              className={`p-3.5 rounded-lg border text-xs space-y-1.5 ${
+                                iss.severity === 'error'
+                                  ? 'bg-rose-50/60 border-rose-200 text-rose-900'
+                                  : iss.severity === 'warning'
+                                  ? 'bg-amber-50/60 border-amber-200 text-amber-900'
+                                  : 'bg-slate-50 border-slate-200 text-slate-800'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center space-x-2 font-bold">
+                                  <span className="font-mono">{iss.rule_id}</span>
+                                  <span>•</span>
+                                  <span>{iss.title}</span>
+                                </div>
+                                {iss.section_key && (
+                                  <button
+                                    onClick={() => {
+                                      setActiveTab('prd');
+                                      setTimeout(() => {
+                                        const el = document.getElementById(`section-${iss.section_key}`);
+                                        if (el && typeof el.scrollIntoView === 'function') {
+                                          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                        }
+                                      }, 150);
+                                    }}
+                                    className="px-2 py-0.5 bg-white text-sky-700 hover:bg-sky-50 border border-sky-300 rounded text-[11px] font-semibold transition inline-flex items-center space-x-1"
+                                    title={`Jump to section ${iss.section_key}`}
+                                  >
+                                    <span>Section: {iss.section_key} &rarr;</span>
+                                  </button>
+                                )}
+                              </div>
+                              <p className="text-slate-600">{iss.description}</p>
+                              <p className="text-slate-700 font-medium">
+                                <strong>Recommendation:</strong> {iss.recommendation}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <p className="text-slate-600">{iss.description}</p>
-                      <p className="text-slate-700 font-medium">
-                        <strong>Recommendation:</strong> {iss.recommendation}
-                      </p>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

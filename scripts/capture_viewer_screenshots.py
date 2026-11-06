@@ -8,6 +8,16 @@ USERNAME = "testuser_1793948736"
 PASSWORD = "Password123!"
 PROJECT_NAME = "AI Customer Support Suite"
 
+VIEWPORTS = [
+    {"name": "mobile_390", "width": 390, "height": 844, "label": "Mobile (390px)"},
+    {"name": "mobile_430", "width": 430, "height": 932, "label": "Mobile Large (430px)"},
+    {"name": "tablet_768", "width": 768, "height": 1024, "label": "Tablet Portrait (768px)"},
+    {"name": "tablet_1024", "width": 1024, "height": 768, "label": "Tablet Landscape (1024px)"},
+    {"name": "laptop_1280", "width": 1280, "height": 800, "label": "Laptop (1280px)"},
+    {"name": "desktop_1440", "width": 1440, "height": 900, "label": "Desktop Standard (1440px)"},
+    {"name": "desktop_1920", "width": 1920, "height": 1080, "label": "Desktop Wide (1920px)"},
+]
+
 async def capture_all_screenshots():
     screenshots_dir = Path(__file__).resolve().parent.parent / "docs" / "screenshots"
     screenshots_dir.mkdir(parents=True, exist_ok=True)
@@ -24,7 +34,7 @@ async def capture_all_screenshots():
         await page.goto("http://localhost:3000/")
         await page.wait_for_timeout(1000)
 
-        # Authenticate
+        # Authenticate if needed
         user_input = page.locator('input[type="text"]')
         if await user_input.count() > 0:
             print("Logging in via UI...")
@@ -35,47 +45,38 @@ async def capture_all_screenshots():
 
         # Select project
         print(f"Selecting project '{PROJECT_NAME}'...")
-        proj_card = page.locator(f'h3:has-text("{PROJECT_NAME}")')
-        await proj_card.wait_for(state="visible", timeout=10000)
-        await proj_card.click()
-        await page.wait_for_timeout(1500)
+        proj_card = page.locator(f'h3:has-text("{PROJECT_NAME}")').first
+        if await proj_card.count() > 0:
+            await proj_card.click()
+            await page.wait_for_timeout(1500)
+        else:
+            # Click first available project card
+            first_proj = page.locator('h3').first
+            await first_proj.click()
+            await page.wait_for_timeout(1500)
 
-        # PRD Document tab
-        tab_btn = page.locator('button:has-text("PRD Document")')
+        # Ensure PRD Document tab is open
+        tab_btn = page.locator('button:has-text("PRD Document")').first
         if await tab_btn.count() > 0:
             await tab_btn.click()
 
         doc_container = page.locator('.document-container').first
         await doc_container.wait_for(state="visible", timeout=10000)
-        await page.wait_for_timeout(1500)
+        await page.wait_for_timeout(1000)
 
-        # 1. Desktop 1440px - Expanded (Default)
-        print("\nCapturing Desktop 1440px Expanded...")
-        await page.set_viewport_size({"width": 1440, "height": 900})
-        await page.wait_for_timeout(500)
-        out_path = screenshots_dir / "document_viewer_desktop_1440.png"
-        await page.screenshot(path=str(out_path), full_page=False)
-        print(f"  Saved: {out_path.name}")
-
-        out_path_exp = screenshots_dir / "document_viewer_desktop_1440_expanded.png"
-        await page.screenshot(path=str(out_path_exp), full_page=False)
-        print(f"  Saved: {out_path_exp.name}")
-
-        # 2. Desktop 1440px - Collapsed TOC
-        print("\nCapturing Desktop 1440px Collapsed TOC...")
-        collapse_btn = page.locator('button[aria-label="Toggle Document Outline"]').first
-        if await collapse_btn.count() > 0:
-            await collapse_btn.click()
+        # Capture each of the 7 viewports
+        for vp in VIEWPORTS:
+            print(f"Capturing {vp['label']} ({vp['width']}x{vp['height']})...")
+            await page.set_viewport_size({"width": vp["width"], "height": vp["height"]})
+            await page.evaluate("window.scrollTo(0, 0)")
             await page.wait_for_timeout(600)
-            out_path_col = screenshots_dir / "document_viewer_desktop_1440_collapsed.png"
-            await page.screenshot(path=str(out_path_col), full_page=False)
-            print(f"  Saved: {out_path_col.name}")
-            # Re-expand
-            await collapse_btn.click()
-            await page.wait_for_timeout(400)
+            out_file = screenshots_dir / f"responsive_{vp['name']}.png"
+            await page.screenshot(path=str(out_file), full_page=False)
+            print(f"  Saved: {out_file.name}")
 
-        # 3. Desktop 1440px - Details Drawer Open
-        print("\nCapturing Desktop Details Drawer...")
+        # Capture Desktop Details Drawer
+        print("Capturing Desktop Details Drawer...")
+        await page.set_viewport_size({"width": 1440, "height": 900})
         details_btn = page.locator('button:has-text("Details")').first
         if await details_btn.count() > 0:
             await details_btn.click()
@@ -88,36 +89,24 @@ async def capture_all_screenshots():
                 await close_drawer_btn.click()
             await page.wait_for_timeout(400)
 
-        # 4. Laptop 1280px
-        print("\nCapturing Laptop 1280px...")
-        await page.set_viewport_size({"width": 1280, "height": 800})
-        await page.evaluate("window.scrollTo(0, 150)")
-        await page.wait_for_timeout(600)
-        out_laptop = screenshots_dir / "document_viewer_laptop_1280.png"
-        await page.screenshot(path=str(out_laptop), full_page=False)
-        print(f"  Saved: {out_laptop.name}")
-
-        # 5. Tablet 768px
-        print("\nCapturing Tablet 768px...")
-        await page.set_viewport_size({"width": 768, "height": 1024})
-        await page.evaluate("window.scrollTo(0, 200)")
-        await page.wait_for_timeout(600)
-        out_tablet = screenshots_dir / "document_viewer_tablet_768.png"
-        await page.screenshot(path=str(out_tablet), full_page=False)
-        print(f"  Saved: {out_tablet.name}")
-
-        # 6. Mobile 390px
-        print("\nCapturing Mobile 390px...")
+        # Capture Mobile 390px Details Drawer
+        print("Capturing Mobile 390px Details Drawer...")
         await page.set_viewport_size({"width": 390, "height": 844})
-        await page.evaluate("window.scrollTo(0, 120)")
-        await page.wait_for_timeout(600)
-        out_mobile = screenshots_dir / "document_viewer_mobile_390.png"
-        await page.screenshot(path=str(out_mobile), full_page=False)
-        print(f"  Saved: {out_mobile.name}")
+        more_btn = page.locator('button[aria-label="More document actions"]').first
+        if await more_btn.count() > 0:
+            await more_btn.click()
+            await page.wait_for_timeout(300)
+            mobile_details_btn = page.locator('button:has-text("Document Details")').first
+            if await mobile_details_btn.count() > 0:
+                await mobile_details_btn.click()
+                await page.wait_for_timeout(600)
+                out_path_mob_drawer = screenshots_dir / "responsive_mobile_390_drawer.png"
+                await page.screenshot(path=str(out_path_mob_drawer), full_page=False)
+                print(f"  Saved: {out_path_mob_drawer.name}")
 
         await context.close()
         await browser.close()
-    print("\nAll 6 screenshots captured and verified successfully!")
+    print("\nAll responsive screenshots captured successfully across all 7 viewports!")
 
 if __name__ == "__main__":
     asyncio.run(capture_all_screenshots())

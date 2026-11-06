@@ -112,12 +112,24 @@ export interface ValidationReport {
   prd_version_id: string;
   project_id: string;
   is_valid: boolean;
+  verdict?: string;
   score: number;
   total_issues: number;
   error_count: number;
   warning_count: number;
   info_count: number;
   issues: ValidationIssue[];
+  total_claims?: number;
+  supported_claims?: number;
+  partially_supported_claims?: number;
+  contradicted_claims?: number;
+  unsupported_claims?: number;
+  ambiguous_claims?: number;
+  unresolved_high_severity_findings?: number;
+  structural_errors?: number;
+  cross_section_conflicts?: number;
+  export_integrity_status?: string;
+  category_summaries?: Record<string, number>;
   created_at: string;
 }
 

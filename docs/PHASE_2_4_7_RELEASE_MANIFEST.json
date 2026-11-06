@@ -1,0 +1,27 @@
+{
+  "project_id": "proj_cs_v2_4_7",
+  "version_number": "v2.4.7",
+  "project_title": "AI Customer Support Suite",
+  "exported_at": "2026-11-06T09:32:13.943084",
+  "artifacts": {
+    "markdown": {
+      "filename": "PRD_proj_cs__v2.4.7.md",
+      "path": "exports\\PRD_proj_cs__v2.4.7.md",
+      "size_bytes": 11003,
+      "sha256": "2db456bebbbd29478822a9922e0f48fc3a2572244b2110cb35c9cf508696028f"
+    },
+    "docx": {
+      "filename": "PRD_proj_cs__v2.4.7.docx",
+      "path": "exports\\PRD_proj_cs__v2.4.7.docx",
+      "size_bytes": 40807,
+      "sha256": "f3a4850951bd719e9f0e1ce8ebdbed47804f5d5dc236f3ec69906d361d8bef44"
+    },
+    "pdf": {
+      "filename": "PRD_proj_cs__v2.4.7.pdf",
+      "path": "exports\\PRD_proj_cs__v2.4.7.pdf",
+      "size_bytes": 55343,
+      "sha256": "732a08c3216620ea13259d53eebcab2d06ad7b9762400e0683f37d2945e9181a"
+    }
+  },
+  "manifest_path": "exports\\manifest_proj_cs__v2.4.7.json"
+}

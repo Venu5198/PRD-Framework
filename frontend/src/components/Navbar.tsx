@@ -27,20 +27,20 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
 
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <div className="flex items-center space-x-3 cursor-pointer" onClick={() => onNavigate('dashboard')}>
-          <div className="bg-sky-500 p-2 rounded-lg text-white">
-            <FileText className="w-5 h-5" />
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
+        <div className="flex items-center space-x-2.5 sm:space-x-3 cursor-pointer shrink-0" onClick={() => onNavigate('dashboard')}>
+          <div className="bg-sky-500 p-1.5 sm:p-2 rounded-lg text-white shrink-0">
+            <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <span className="font-bold text-lg tracking-tight">PRD Framework</span>
-            <span className="ml-2 text-xs bg-sky-950 text-sky-400 border border-sky-800 px-2 py-0.5 rounded-full font-mono">
+          <div className="flex items-center space-x-2 shrink-0">
+            <span className="font-bold text-base sm:text-lg tracking-tight whitespace-nowrap">PRD Framework</span>
+            <span className="text-[10px] sm:text-xs bg-sky-950 text-sky-400 border border-sky-800 px-1.5 sm:px-2 py-0.5 rounded-full font-mono whitespace-nowrap shrink-0">
               LOCAL-FIRST
             </span>
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 sm:space-x-4 shrink-0">
           {health && (
             <div className="hidden md:flex items-center space-x-2 text-xs bg-slate-800/80 px-3 py-1.5 rounded-md border border-slate-700">
               <Cpu className="w-4 h-4 text-sky-400" />

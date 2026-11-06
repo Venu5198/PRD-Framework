@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PRDVersion } from '../../types';
 import { X, Copy, Check, Hash, FileText, CheckCircle2, AlertTriangle, ShieldCheck, Tag, Info, Layers, Calendar, Terminal } from 'lucide-react';
 
@@ -18,6 +18,20 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
   targetDomain,
 }) => {
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -66,7 +80,7 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
       <aside
         role="dialog"
         aria-label="Document Metadata and Specifications"
-        className="relative z-50 w-full max-w-md bg-white h-full shadow-2xl border-l border-slate-200 flex flex-col overflow-hidden animate-in slide-in-from-right duration-200"
+        className="relative z-50 w-full sm:max-w-md bg-white h-full shadow-2xl border-l border-slate-200 flex flex-col overflow-hidden animate-in slide-in-from-right duration-200"
       >
         {/* Drawer Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">

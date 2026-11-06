@@ -1,6 +1,8 @@
 import os
 import re
 import logging
+import hashlib
+import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
@@ -818,11 +820,58 @@ class ExportService:
         doc_template.build(story, canvasmaker=NumberedCanvas)
         return filepath
 
-        doc_template.build(story, canvasmaker=NumberedCanvas)
-        return filepath
-
     def export_pdf(self, prd_version: PRDVersion, project_title: str) -> Path:
         """Export PRD version to PDF via Document IR."""
         filename = f"PRD_{prd_version.project_id[:8]}_{prd_version.version_number}.pdf"
         doc = DocumentParser.parse_prd(prd_version, project_title)
         return self.export_document_to_pdf(doc, filename)
+
+    @staticmethod
+    def calculate_file_hash(filepath: Path) -> str:
+        """Calculates independent SHA-256 hash of an exported file artifact."""
+        sha = hashlib.sha256()
+        with open(filepath, "rb") as f:
+            while chunk := f.read(65536):
+                sha.update(chunk)
+        return sha.hexdigest()
+
+    def export_all_with_manifest(self, prd_version: PRDVersion, project_title: str) -> Dict[str, Any]:
+        """
+        Exports Markdown, DOCX, and PDF artifacts with separate SHA-256 calculations
+        and generates an authoritative manifest.
+        """
+        md_path = self.export_markdown(prd_version, project_title)
+        docx_path = self.export_docx(prd_version, project_title)
+        pdf_path = self.export_pdf(prd_version, project_title)
+
+        manifest = {
+            "project_id": prd_version.project_id,
+            "version_number": prd_version.version_number,
+            "project_title": project_title,
+            "exported_at": datetime.utcnow().isoformat(),
+            "artifacts": {
+                "markdown": {
+                    "filename": md_path.name,
+                    "path": str(md_path),
+                    "size_bytes": md_path.stat().st_size,
+                    "sha256": self.calculate_file_hash(md_path)
+                },
+                "docx": {
+                    "filename": docx_path.name,
+                    "path": str(docx_path),
+                    "size_bytes": docx_path.stat().st_size,
+                    "sha256": self.calculate_file_hash(docx_path)
+                },
+                "pdf": {
+                    "filename": pdf_path.name,
+                    "path": str(pdf_path),
+                    "size_bytes": pdf_path.stat().st_size,
+                    "sha256": self.calculate_file_hash(pdf_path)
+                }
+            }
+        }
+        manifest_path = self.exports_dir / f"manifest_{prd_version.project_id[:8]}_{prd_version.version_number}.json"
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2)
+        manifest["manifest_path"] = str(manifest_path)
+        return manifest

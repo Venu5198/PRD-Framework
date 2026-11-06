@@ -1,9 +1,10 @@
 import re
 import logging
-from typing import Dict, Any, List, Optional, Set
-from app.models.prd import PRDVersion, PRDSectionContent, CANONICAL_SECTIONS, SECTION_TITLES
+import hashlib
+from typing import Dict, Any, List, Optional, Set, Tuple
+from app.models.prd import PRDVersion, PRDSectionContent, CANONICAL_SECTIONS, SECTION_TITLES, CanonicalProvenance
 from app.models.analysis import AnalysisRecord
-from app.models.validation import ValidationIssue, ValidationReport
+from app.models.validation import ValidationIssue, ValidationReport, ClaimModel, EntailmentOutcome
 from app.db.repository import ValidationRepository, AnalysisRepository
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,43 @@ AMBIGUOUS_TERMS = [
     r"\befficient\b",
     r"\boptimal\b"
 ]
+
+TEN_CATEGORIES = [
+    "Structural Completeness",
+    "Provenance & Grounding",
+    "Semantic Entailment",
+    "Cross-Section Consistency",
+    "Numerical & SLA Governance",
+    "Requirements & AC Coherence",
+    "Data & Security Governance",
+    "Export Artifact Integrity",
+    "Workflow & Domain Realism",
+    "Regulatory & Compliance"
+]
+
+def categorize_issue_rule(rule_id: str) -> str:
+    r = rule_id.upper()
+    if any(k in r for k in ["VAL-SEC-001", "VAL-SEC-002", "VAL-STR-", "VAL-DIA-", "VAL-ENG-008"]):
+        return "Structural Completeness"
+    if any(k in r for k in ["VAL-PROV-", "VAL-GRD-", "VAL-CLAIM-"]):
+        return "Provenance & Grounding"
+    if any(k in r for k in ["VAL-NUM-", "VAL-SLA-", "VAL-TGT-"]):
+        return "Numerical & SLA Governance"
+    if any(k in r for k in ["VAL-SCP-", "VAL-XSEC-", "VAL-COH-", "VAL-DUP-"]):
+        return "Cross-Section Consistency"
+    if any(k in r for k in ["VAL-REQ-", "VAL-AC-", "VAL-TRC-", "VAL-ENG-"]):
+        return "Requirements & AC Coherence"
+    if any(k in r for k in ["VAL-DAT-", "VAL-PRIV-", "VAL-CYBER-"]) or ("VAL-SEC-" in r and not r.startswith("VAL-SEC-00")):
+        return "Data & Security Governance"
+    if any(k in r for k in ["VAL-EXP-", "VAL-HASH-", "VAL-DOC-", "VAL-STATUS-", "VAL-STAT-"]):
+        return "Export Artifact Integrity"
+    if any(k in r for k in ["VAL-WRK-", "VAL-DOM-", "VAL-UJ-"]):
+        return "Workflow & Domain Realism"
+    if any(k in r for k in ["VAL-REG-", "VAL-CMP-", "VAL-LEGAL-"]):
+        return "Regulatory & Compliance"
+    if any(k in r for k in ["VAL-SEM-", "VAL-ENT-", "VAL-AMB-"]):
+        return "Semantic Entailment"
+    return "Semantic Entailment"
 
 class ValidationService:
     def __init__(
@@ -2167,6 +2205,26 @@ class ValidationService:
             verdict = "APPROVED" if score >= 85 else "REJECTED"
         score = max(0, min(100, score))
 
+        # Extract atomic claims across all 27 canonical sections
+        claims = self._extract_atomic_claims(prd_version, analysis)
+
+        # Compute Category Summaries across the 10 canonical categories
+        category_summaries: Dict[str, int] = {cat: 0 for cat in TEN_CATEGORIES}
+        for iss in issues:
+            cat = categorize_issue_rule(iss.rule_id)
+            category_summaries[cat] = category_summaries.get(cat, 0) + 1
+
+        total_claims = len(claims)
+        supported_claims = sum(1 for c in claims if c.entailment_outcome == EntailmentOutcome.SUPPORTED.value)
+        partially_supported = sum(1 for c in claims if c.entailment_outcome == EntailmentOutcome.PARTIALLY_SUPPORTED.value)
+        contradicted_claims = sum(1 for c in claims if c.entailment_outcome == EntailmentOutcome.CONTRADICTED.value)
+        unsupported_claims = sum(1 for c in claims if c.entailment_outcome == EntailmentOutcome.NOT_SUPPORTED.value)
+        ambiguous_claims = sum(1 for c in claims if c.entailment_outcome == EntailmentOutcome.AMBIGUOUS.value)
+        
+        structural_errors = category_summaries.get("Structural Completeness", 0)
+        cross_section_conflicts = category_summaries.get("Cross-Section Consistency", 0)
+        export_integrity_status = "COMPROMISED" if category_summaries.get("Export Artifact Integrity", 0) > 0 else "VERIFIED"
+
         report = ValidationReport(
             prd_version_id=str(prd_version.id or "draft"),
             project_id=prd_version.project_id,
@@ -2177,7 +2235,19 @@ class ValidationService:
             error_count=error_count,
             warning_count=warning_count,
             info_count=info_count,
-            issues=issues
+            issues=issues,
+            claims=claims,
+            total_claims=total_claims,
+            supported_claims=supported_claims,
+            partially_supported_claims=partially_supported,
+            contradicted_claims=contradicted_claims,
+            unsupported_claims=unsupported_claims,
+            ambiguous_claims=ambiguous_claims,
+            unresolved_high_severity_findings=error_count,
+            structural_errors=structural_errors,
+            cross_section_conflicts=cross_section_conflicts,
+            export_integrity_status=export_integrity_status,
+            category_summaries=category_summaries
         )
 
         # Persist report if repository is configured
@@ -2190,6 +2260,84 @@ class ValidationService:
                 logger.warning(f"Could not persist validation report: {e}")
 
         return report
+
+    def _extract_atomic_claims(
+        self,
+        prd_version: PRDVersion,
+        analysis: Optional[AnalysisRecord]
+    ) -> List[ClaimModel]:
+        claims: List[ClaimModel] = []
+        claim_counter = 1
+
+        facts_text = " ".join(analysis.facts) if analysis and analysis.facts else ""
+        objectives_text = " ".join(analysis.core_objectives) if analysis and analysis.core_objectives else ""
+        constraints_text = " ".join(analysis.explicit_constraints) if analysis and analysis.explicit_constraints else ""
+        assumptions_text = " ".join(analysis.assumptions) if analysis and analysis.assumptions else ""
+        ground_corpus = f"{facts_text} {objectives_text} {constraints_text}".lower()
+
+        out_of_scope_text = ""
+        if "out_of_scope" in prd_version.sections and not prd_version.sections["out_of_scope"].is_na:
+            out_of_scope_text = prd_version.sections["out_of_scope"].content.lower()
+
+        for sec_key in CANONICAL_SECTIONS:
+            sec = prd_version.sections.get(sec_key)
+            if not sec or sec.is_na or not sec.content:
+                continue
+
+            content = sec.content.strip()
+            lines = [l.strip() for l in content.splitlines() if l.strip()]
+            for line in lines:
+                clean_line = re.sub(r"^[\|\-\*\#\d\.\s]+", "", line).strip()
+                clean_line = re.sub(r"\|.*$", "", clean_line).strip()
+                if len(clean_line) < 15:
+                    continue
+
+                req_ids = list(set(re.findall(r"\b(?:FR|NFR|BR|AC|RSK|MET)-\d+\b", line)))
+                fingerprint = hashlib.sha256(clean_line.encode("utf-8")).hexdigest()[:16]
+
+                is_ambiguous = any(re.search(pat, clean_line, re.IGNORECASE) for pat in AMBIGUOUS_TERMS)
+
+                is_contradicted = False
+                lower_line = clean_line.lower()
+                if out_of_scope_text and sec_key != "out_of_scope":
+                    for oos_phrase in [p.strip() for p in out_of_scope_text.splitlines() if len(p.strip()) > 10]:
+                        clean_oos = re.sub(r"^[\|\-\*\#\d\.\s]+", "", oos_phrase).lower()
+                        if clean_oos and clean_oos in lower_line:
+                            is_contradicted = True
+                            break
+
+                if is_contradicted:
+                    outcome = EntailmentOutcome.CONTRADICTED.value
+                    prov = CanonicalProvenance.PROPOSED.value
+                elif is_ambiguous:
+                    outcome = EntailmentOutcome.AMBIGUOUS.value
+                    prov = CanonicalProvenance.INFERRED.value
+                elif ground_corpus and any(term in ground_corpus for term in lower_line.split() if len(term) > 5):
+                    outcome = EntailmentOutcome.SUPPORTED.value
+                    prov = CanonicalProvenance.USER_CONFIRMED.value
+                elif assumptions_text and any(term in assumptions_text.lower() for term in lower_line.split() if len(term) > 5):
+                    outcome = EntailmentOutcome.PARTIALLY_SUPPORTED.value
+                    prov = CanonicalProvenance.INFERRED.value
+                else:
+                    outcome = EntailmentOutcome.PARTIALLY_SUPPORTED.value
+                    prov = CanonicalProvenance.PROPOSED.value
+
+                claims.append(ClaimModel(
+                    claim_id=f"CLM-{sec_key[:4].upper()}-{claim_counter:03d}",
+                    statement_text=clean_line[:300],
+                    section_key=sec_key,
+                    source_type="user_submission",
+                    source_document="User Submission",
+                    source_fingerprint=fingerprint,
+                    source_excerpt=clean_line[:100],
+                    provenance=prov,
+                    entailment_outcome=outcome,
+                    adjudication_status="ADJUDICATED",
+                    related_requirement_ids=req_ids
+                ))
+                claim_counter += 1
+
+        return claims
 
     async def validate_markdown(
         self,
@@ -2268,5 +2416,8 @@ class ValidationService:
             report.is_valid = False
             report.verdict = "REJECTED"
             report.score = min(report.score, 65)
+            report.category_summaries["Export Artifact Integrity"] = report.category_summaries.get("Export Artifact Integrity", 0) + 1
+            report.export_integrity_status = "COMPROMISED"
+            report.unresolved_high_severity_findings += 1
 
         return report

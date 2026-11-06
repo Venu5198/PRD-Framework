@@ -35,6 +35,7 @@ class BackgroundWorker:
         self.shutdown_event = asyncio.Event()
         self.job_repo = JobRepository()
         self.current_job_id: Optional[str] = None
+        self.validation_repo = ValidationRepository()
         self.prd_service = PRDService(
             prd_repo=PRDRepository(),
             version_repo=PRDVersionRepository(),
@@ -42,9 +43,10 @@ class BackgroundWorker:
             submission_repo=SubmissionRepository(),
             analysis_repo=AnalysisRepository(),
             clarification_repo=ClarificationRepository(),
-            gen_run_repo=GenerationRunRepository()
+            gen_run_repo=GenerationRunRepository(),
+            validation_repo=self.validation_repo
         )
-        self.validation_service = ValidationService(ValidationRepository(), AnalysisRepository())
+        self.validation_service = ValidationService(self.validation_repo, AnalysisRepository())
 
     def handle_signal(self, sig):
         logger.info(f"Worker {self.worker_id} received signal {sig}. Initiating graceful shutdown...")
@@ -137,17 +139,18 @@ class BackgroundWorker:
                 requested_version=job.get("version_number") or "v2.4.5"
             )
 
-            # Auto-validate version and synchronize authoritative status
+            # Auto-validate version and set initial lifecycle status (no self-approval)
             try:
                 report = await self.validation_service.validate_version(version)
-                new_status = "approved" if (report.is_valid and report.verdict == "APPROVED") else "rejected"
+                new_status = "under_review" if (report.is_valid and report.verdict == "APPROVED") else "blocked"
                 
                 # Synchronize status across Section 1 and DB
                 if "document_information" in version.sections:
                     sec_content = version.sections["document_information"].content
+                    display_status = "Under Review" if new_status == "under_review" else "Blocked"
                     sec_content = re.sub(
                         r"\*\*Status:\*\*\s*[^\n]+",
-                        f"**Status:** {new_status.replace('_', ' ').title()}",
+                        f"**Status:** {display_status}",
                         sec_content
                     )
                     version.sections["document_information"].content = sec_content

@@ -47,7 +47,8 @@ class PRDService:
         submission_repo: SubmissionRepository,
         analysis_repo: AnalysisRepository,
         clarification_repo: ClarificationRepository,
-        gen_run_repo: GenerationRunRepository
+        gen_run_repo: GenerationRunRepository,
+        validation_repo: Optional[Any] = None
     ):
         self.prd_repo = prd_repo
         self.version_repo = version_repo
@@ -56,6 +57,7 @@ class PRDService:
         self.analysis_repo = analysis_repo
         self.clarification_repo = clarification_repo
         self.gen_run_repo = gen_run_repo
+        self.validation_repo = validation_repo
 
     async def analyze_submission(self, project_id: str, force_mock: bool = False) -> AnalysisRecord:
         """Run stage 1: Input Analysis."""
@@ -394,6 +396,17 @@ class PRDService:
         except Exception:
             next_num = f"{cur_num}.1"
 
+        # Synchronize Section 1 Document Information version header with new version number
+        if "document_information" in sections and section_key != "document_information":
+            doc_sec = sections["document_information"]
+            new_doc_content = re.sub(
+                r"(\*\*Version:\*\*)\s*[^\n]+",
+                f"\\1 {next_num}",
+                doc_sec.content
+            )
+            doc_sec.content = new_doc_content
+            sections["document_information"] = doc_sec
+
         new_version_data = {
             "prd_id": prd["id"],
             "project_id": project_id,
@@ -447,13 +460,36 @@ class PRDService:
         )
 
     async def approve_version(self, project_id: str, version_id: str) -> PRDVersion:
-        """Mark a version as Approved."""
+        """Mark a version as Approved strictly after quality and semantic validation passes."""
         ver_doc = await self.version_repo.get_by_id(version_id)
         if not ver_doc:
             raise ValueError("PRD version not found.")
 
+        # Ensure validation is run and passing before approval
+        from app.services.validation_service import ValidationService
+        validator = ValidationService(validation_repo=self.validation_repo, analysis_repo=self.analysis_repo)
+        temp_version = PRDVersion(**ver_doc)
+        val_report = await validator.validate_version(temp_version)
+        if not val_report.is_valid or val_report.error_count > 0 or val_report.verdict != "APPROVED":
+            # Transition status to blocked if critical validation failures exist
+            await self.version_repo.update(version_id, {"status": "blocked"})
+            raise ValueError(
+                f"Cannot approve PRD version: Document has {val_report.error_count} blocking validation error(s) "
+                f"and verdict is '{val_report.verdict}'."
+            )
+
+        # Update Section 1 Document Information to Status: Approved
+        sections = ver_doc.get("sections", {})
+        if "document_information" in sections:
+            doc_info = sections["document_information"]
+            content = doc_info.get("content", "")
+            content = re.sub(r"(\*\*Status:\*\*)\s*[^\n]+", r"\1 Approved", content)
+            doc_info["content"] = content
+            sections["document_information"] = doc_info
+
         updated = await self.version_repo.update(version_id, {
             "status": "approved",
+            "sections": sections,
             "changelog": f"{ver_doc.get('changelog', '')} [APPROVED]"
         })
         return PRDVersion(**updated)

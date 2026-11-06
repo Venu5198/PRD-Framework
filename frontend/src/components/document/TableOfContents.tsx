@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PRDSectionContent } from '../../types';
 import { Search, ChevronRight, X, BookOpen, PanelLeftClose } from 'lucide-react';
 
@@ -22,6 +22,20 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
   onToggleCollapse,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpenMobile && onCloseMobile) {
+        onCloseMobile();
+      }
+    };
+    if (isOpenMobile) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpenMobile, onCloseMobile]);
 
   const filteredSections = sections.filter((sec) =>
     sec.title.toLowerCase().includes(searchTerm.toLowerCase())

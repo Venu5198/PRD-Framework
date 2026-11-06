@@ -106,7 +106,7 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
             setIsNavCollapsed(!isNavCollapsed);
           }
         }}
-        isNavCollapsed={isNavCollapsed}
+        isNavCollapsed={typeof window !== 'undefined' && window.innerWidth < 1024 ? !mobileTocOpen : isNavCollapsed}
         onOpenDetails={() => setIsDetailsOpen(true)}
         onRunValidation={onRunValidation}
         validating={validating}

@@ -54,11 +54,13 @@ def get_prd_service(
     submission_repo: SubmissionRepository = Depends(get_submission_repo),
     analysis_repo: AnalysisRepository = Depends(get_analysis_repo),
     clarification_repo: ClarificationRepository = Depends(get_clarification_repo),
-    gen_run_repo: GenerationRunRepository = Depends(get_gen_run_repo)
+    gen_run_repo: GenerationRunRepository = Depends(get_gen_run_repo),
+    validation_repo: ValidationRepository = Depends(get_validation_repo)
 ) -> PRDService:
     return PRDService(
         prd_repo, version_repo, project_repo,
-        submission_repo, analysis_repo, clarification_repo, gen_run_repo
+        submission_repo, analysis_repo, clarification_repo, gen_run_repo,
+        validation_repo
     )
 
 def get_validation_service(

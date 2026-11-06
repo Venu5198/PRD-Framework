@@ -6,10 +6,46 @@ from enum import Enum
 class CanonicalProvenance(str, Enum):
     USER_CONFIRMED = "USER_CONFIRMED"
     ASSIGNMENT_REQUIRED = "ASSIGNMENT_REQUIRED"
-    REFERENCE_SUPPORTED = "REFERENCE_SUPPORTED"
+    SOURCE_SUPPORTED = "SOURCE_SUPPORTED"
     INFERRED = "INFERRED"
     PROPOSED = "PROPOSED"
     UNRESOLVED = "UNRESOLVED"
+    EXTERNAL_REFERENCE = "EXTERNAL_REFERENCE"
+    # Legacy alias support
+    REFERENCE_SUPPORTED = "SOURCE_SUPPORTED"
+
+    @classmethod
+    def normalize(cls, val: str) -> "CanonicalProvenance":
+        if not val:
+            return cls.INFERRED
+        clean = str(val).strip().upper()
+        if clean in ("CONFIRMED_USER_INPUT", "USER_INPUT", "USER_CONFIRMED"):
+            return cls.USER_CONFIRMED
+        if clean in ("REFERENCE_SUPPORTED", "SOURCE_SUPPORTED", "DOCUMENT_SUPPORTED"):
+            return cls.SOURCE_SUPPORTED
+        if clean in ("ASSIGNMENT_REQUIRED", "ASSIGNMENT"):
+            return cls.ASSIGNMENT_REQUIRED
+        if clean in ("EXTERNAL_REFERENCE", "EXTERNAL"):
+            return cls.EXTERNAL_REFERENCE
+        if clean in ("PROPOSED", "RECOMMENDED"):
+            return cls.PROPOSED
+        if clean in ("UNRESOLVED", "OPEN_QUESTION"):
+            return cls.UNRESOLVED
+        if clean in ("INFERRED", "ASSUMPTION"):
+            return cls.INFERRED
+        try:
+            return cls(clean)
+        except ValueError:
+            return cls.INFERRED
+
+class PRDStatus(str, Enum):
+    DRAFT = "draft"
+    UNDER_REVIEW = "under_review"
+    BLOCKED = "blocked"
+    APPROVED = "approved"
+    SUPERSEDED = "superseded"
+    ARCHIVED = "archived"
+    REJECTED = "rejected"
 
 class ProvenanceEntry(BaseModel):
     statement_id: str
