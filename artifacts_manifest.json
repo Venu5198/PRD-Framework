@@ -1,10 +1,10 @@
 {
-  "phase": "2.4.5",
-  "generated_at": "2026-11-06T05:36:20Z",
-  "project_id": "6aed673a2e67758afac5c83d",
-  "job_id": "4ee56ef4-6638-451f-99e2-5edeb6b95c4d",
-  "prd_version_id": "6aed67515b51405abb2a0daf",
-  "version_number": "v2.4.5",
+  "phase": "2.4.6",
+  "generated_at": "2026-11-06T06:26:47Z",
+  "project_id": "6aed72feb8ebd6fda9336d59",
+  "job_id": "d240c608-78c2-4bd0-bf2a-2ea094a4aa8a",
+  "prd_version_id": "6aed73245bc5b76765fd905e",
+  "version_number": "v2.4.6",
   "provider": "groq",
   "model": "openai/gpt-oss-20b",
   "force_mock": false,
@@ -18,29 +18,29 @@
     "markdown_error_count": 0
   },
   "provenance_summary": {
-    "total_entries": 39,
+    "total_entries": 64,
     "categories": {
-      "USER_CONFIRMED": 31,
-      "PROPOSED": 3,
-      "INFERRED": 1,
+      "USER_CONFIRMED": 26,
+      "INFERRED": 27,
+      "PROPOSED": 7,
       "UNRESOLVED": 4
     }
   },
   "artifacts": {
     "markdown": {
-      "filename": "PRD_Customer_Support_v2_4_5.md",
-      "size_bytes": 47657,
-      "sha256": "a3d303154a3eef41fe2e85863afaae38dc3f3e5f5f17ffc2a928bce08d2407a9"
+      "filename": "PRD_Customer_Support_v2_4_6.md",
+      "size_bytes": 56047,
+      "sha256": "288701b2035641a21e19fdf13181be0b62245e9918a1d69ade407f346c83f3a9"
     },
     "docx": {
-      "filename": "PRD_Customer_Support_v2_4_5.docx",
-      "size_bytes": 49663,
-      "sha256": "bc7166d8e11337db373c2b5a3b430da0a90482c97c7b6a46850d51c13750c261"
+      "filename": "PRD_Customer_Support_v2_4_6.docx",
+      "size_bytes": 51253,
+      "sha256": "8ad257cdc1651ec4fa3a1667375e2879afddb87d940b4237b0fe648f8830fe3a"
     },
     "pdf": {
-      "filename": "PRD_Customer_Support_v2_4_5.pdf",
-      "size_bytes": 33415,
-      "sha256": "0e9bd6a3e92665c21f66d931de58b61ac958e21260b99955bed03bc8f9002a5d"
+      "filename": "PRD_Customer_Support_v2_4_6.pdf",
+      "size_bytes": 36535,
+      "sha256": "0212d10686de93b0cf2153a3ff144ac88bb87b848a6d3fd52335e34699d5fc41"
     }
   }
 }

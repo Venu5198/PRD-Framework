@@ -108,20 +108,6 @@ class RiskAnalyst:
                 cont = r.get("contingency_plan") or r.get("contingency") or "Fail safe to manual operator review with diagnostic telemetry."
                 owner = r.get("owner_role") or r.get("owner") or "Systems Engineering Lead"
 
-                # Sanitize out-of-scope ticketing/external channels from risks
-                title = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", title, flags=re.IGNORECASE)
-                ev = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", ev, flags=re.IGNORECASE)
-                ev = re.sub(r"\b(?:whatsapp|telegram|sms|phone call)\b", "web chat reconnection", ev, flags=re.IGNORECASE)
-                root = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", root, flags=re.IGNORECASE)
-                mit = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", mit, flags=re.IGNORECASE)
-                cont = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", cont, flags=re.IGNORECASE)
-
-                # Sanitize invented retention claims from risks
-                ret_sanitize = r"\b(?:automatic deletion after \d+\s*(?:days|day|months|years)|retained for \d+\s*(?:days|day|months|years)|retention of (?:at least )?\d+\s*(?:days|day|months|years)|\b30 days\b|\b30-day\b)\b"
-                mit = re.sub(ret_sanitize, "automatic deletion according to [Unresolved: Pending stakeholder specification]", mit, flags=re.IGNORECASE)
-                cont = re.sub(ret_sanitize, "automatic deletion according to [Unresolved: Pending stakeholder specification]", cont, flags=re.IGNORECASE)
-                ev = re.sub(ret_sanitize, "[Unresolved: Pending stakeholder specification]", ev, flags=re.IGNORECASE)
-                
                 parsed_risks.append(RiskItem(
                     id=f"RSK-{idx:03d}",
                     category=r.get("category", "Operational"),

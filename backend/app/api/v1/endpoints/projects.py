@@ -224,7 +224,7 @@ async def generate_prd_job(
         "provider": "offline_mock" if use_mock else settings.AI_PROVIDER,
         "model": "offline_mock" if use_mock else (settings.GROQ_MODEL if settings.AI_PROVIDER == "groq" else settings.OLLAMA_MODEL),
         "force_mock": use_mock,
-        "version_number": "v2.4.5",
+        "version_number": "v2.4.6",
         "retry_count": 0,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()

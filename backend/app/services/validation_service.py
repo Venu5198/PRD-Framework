@@ -1008,6 +1008,116 @@ class ValidationService:
                             ))
                             score -= 2
 
+        # -------------------------------------------------------------
+        # VAL-PROV-005: Provenance Ledger & Deterministic Evidence Entailment
+        # -------------------------------------------------------------
+        app_sec = prd_version.sections.get("appendix_and_glossary")
+        if app_sec and not app_sec.is_na:
+            app_content = app_sec.content or ""
+            has_ledger = "full document provenance ledger" in app_content.lower()
+            
+            # Determine document version
+            doc_info = prd_version.sections.get("document_information")
+            doc_ver = prd_version.version_number or ""
+            if doc_info and doc_info.content:
+                vm = re.search(r"\*\*Version:\*\*\s*([^\s\|]+)", doc_info.content)
+                if vm:
+                    doc_ver = vm.group(1).strip()
+            is_p245_or_newer = any(v in doc_ver for v in ["v2.4.5", "v2.4.6", "v2.5", "v3."])
+
+            if not has_ledger:
+                if is_p245_or_newer:
+                    issues.append(ValidationIssue(
+                        rule_id="VAL-PROV-001",
+                        severity="error",
+                        section_key="appendix_and_glossary",
+                        title="Missing Section 27 Full Document Provenance Ledger",
+                        description="Section 27 (Appendix and Glossary) must contain the authoritative Full Document Provenance Ledger table.",
+                        recommendation="Render the complete claim-level provenance ledger covering canonical sections."
+                    ))
+                    score -= 8
+                else:
+                    issues.append(ValidationIssue(
+                        rule_id="VAL-PROV-001",
+                        severity="info",
+                        section_key="appendix_and_glossary",
+                        title="Provenance Ledger Not Rendered in Legacy Section 27",
+                        description="Section 27 does not contain the Full Document Provenance Ledger table (mandated starting in v2.4.5).",
+                        recommendation="Render the complete claim-level provenance ledger covering canonical sections."
+                    ))
+            else:
+                ledger_lines = [l.strip() for l in app_content.split("\n") if l.strip().startswith("|") and ("CLM-" in l or "PL-" in l)]
+                if len(ledger_lines) < 15:
+                    issues.append(ValidationIssue(
+                        rule_id="VAL-PROV-001",
+                        severity="error",
+                        section_key="appendix_and_glossary",
+                        title="Incomplete Full Document Provenance Ledger",
+                        description=f"Provenance Ledger contains only {len(ledger_lines)} claims; comprehensive coverage across 27 canonical sections requires at least 25 entries.",
+                        recommendation="Generate claim-level provenance entries covering all canonical PRD sections."
+                    ))
+                    score -= 8
+
+                raw_idea = getattr(analysis, "raw_idea", None) if analysis else None
+                user_evidence_list = (analysis.explicit_constraints or []) + (analysis.facts or []) + (analysis.core_objectives or []) + ([raw_idea] if raw_idea else [])
+                user_evidence_str = " ".join(user_evidence_list).lower()
+
+                for row in ledger_lines:
+                    parts = [p.strip() for p in row.split("|")]
+                    if len(parts) >= 9:
+                        cid = parts[1].replace("*", "").strip()
+                        c_sec = parts[2].strip()
+                        c_stmt = parts[3].strip()
+                        c_class = parts[4].replace("`", "").strip().upper()
+                        c_doc = parts[5].strip()
+                        c_src = parts[6].strip()
+                        c_meth = parts[7].strip()
+                        c_res = parts[8].strip()
+
+                        # Validate classification
+                        valid_classes = {"USER_CONFIRMED", "ASSIGNMENT_REQUIRED", "REFERENCE_SUPPORTED", "INFERRED", "PROPOSED", "UNRESOLVED"}
+                        if c_class not in valid_classes:
+                            issues.append(ValidationIssue(
+                                rule_id="VAL-PROV-002",
+                                severity="error",
+                                section_key="appendix_and_glossary",
+                                title=f"Non-Canonical Provenance Classification '{c_class}' in {cid}",
+                                description=f"Claim {cid} uses non-canonical provenance '{c_class}'.",
+                                recommendation="Map classification strictly to: USER_CONFIRMED, ASSIGNMENT_REQUIRED, REFERENCE_SUPPORTED, INFERRED, PROPOSED, UNRESOLVED."
+                            ))
+                            score -= 5
+
+                        # VAL-PROV-005 Deterministic Evidence Entailment check
+                        if c_class in ["USER_CONFIRMED", "ASSIGNMENT_REQUIRED"] and analysis:
+                            pcts = re.findall(r"\b\d+(?:\.\d+)?%", c_stmt)
+                            for pct in pcts:
+                                if pct not in user_evidence_str:
+                                    issues.append(ValidationIssue(
+                                        rule_id="VAL-PROV-005",
+                                        severity="error",
+                                        section_key="appendix_and_glossary",
+                                        title=f"Deterministic Evidence Entailment Failed: Ungrounded Metric '{pct}' in {cid}",
+                                        description=f"Claim {cid} is marked as '{c_class}' but asserts ungrounded metric '{pct}' absent from source evidence.",
+                                        recommendation="Reclassify claim as PROPOSED or INFERRED unless explicitly confirmed in source evidence."
+                                    ))
+                                    score -= 8
+                                    break
+
+                            if "support" in (analysis.problem_domain or "").lower():
+                                out_of_scope_terms = ["ticket creation", "external ticketing", "callback", "telephony", "whatsapp", "billing dispute", "manager sign-off"]
+                                for oos in out_of_scope_terms:
+                                    if oos in c_stmt.lower() and oos not in user_evidence_str:
+                                        issues.append(ValidationIssue(
+                                            rule_id="VAL-PROV-005",
+                                            severity="error",
+                                            section_key="appendix_and_glossary",
+                                            title=f"Deterministic Evidence Entailment Failed: Out-of-Scope Capability '{oos}' in {cid}",
+                                            description=f"Claim {cid} is marked as '{c_class}' but introduces out-of-scope capability '{oos}'.",
+                                            recommendation="Reclassify as UNRESOLVED or remove out-of-scope capability."
+                                        ))
+                                        score -= 8
+                                        break
+
         # VAL-ENG-004: Unspecified Architecture & Compliance Claims Check
         sec_sec = prd_version.sections.get("security_and_privacy_requirements")
         if sec_sec and not sec_sec.is_na:

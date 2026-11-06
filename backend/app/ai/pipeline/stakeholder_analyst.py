@@ -130,32 +130,12 @@ class StakeholderAnalyst:
                     continue
                 valid_personas.append(PersonaProfile(**p))
 
-            # Sanitize out-of-scope workflows from user journeys
-            import re
-            clean_journeys = []
+            # Validate personas and user journeys without silent rewriting
+            valid_journeys = []
             for j in raw_journeys:
-                step_dict = dict(j)
-                if not intended_has_mgr and "manager" in step_dict.get("actor", "").lower():
-                    step_dict["actor"] = valid_personas[-1].role_name if valid_personas else "Customer Service Representative"
-                for field in ["actor_action", "system_response", "error_or_edge_case"]:
-                    val = step_dict.get(field, "")
-                    if val and isinstance(val, str):
-                        val = re.sub(r"\b(?:offers to schedule a call back|schedule a call back|schedule a callback|call back|callback)\b", "offers to leave an asynchronous message in the internal queue", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:phone call|voice call|telephony|sms channel)\b", "web chat message", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:fallback to connect with a live representative|live representative fallback)\b", "fallback to leave an asynchronous message in the queue", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:quick-edit field for the rep to modify the answer before sending|quick-edit field for the rep to modify|rep's edit conflicts with policy|rep's edit|agent editing)\b", "representative reviews customer transcript and context summary", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:system warns and requires manager approval|requires manager approval|managerial sign-off|manager sign-off|manager approval)\b", "system logs escalation review in audit log", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:daily dashboard for ai accuracy rates|daily dashboard for ai|dashboard for ai accuracy|daily dashboard)\b", "internal queue triage view", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:confirms ticket creation|ticket creation|generates a ticket ID|ticket ID|queued ticket|opens the queued ticket|marks the ticket as resolved|close tickets|resolves tickets|ticket generation|escalation ticket|a ticket|the ticket)\b", "escalation queue entry", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:support manager|customer support manager)\b", "Support Representative", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:expected wait time|estimated wait time|informs the customer of an expected wait time|informs the user of the expected wait time|wait time estimate|wait-time)\b", "informs the user that the inquiry is queued for representative review", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:billing discrepancy|billing dispute|invoice dispute|billing refund|disputes a billing charge|submits a billing inquiry|billing issue)\b", "complex knowledge-base query", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:queue is full|when the queue is full|escalation queue is full)\b", "inquiry queue is busy", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:final satisfaction feedback|satisfaction feedback|satisfaction survey)\b", "completes the session", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:marks the interaction as resolved|marks the ticket as resolved)\b", "records interaction outcome in audit history", val, flags=re.IGNORECASE)
-                        step_dict[field] = val
-                clean_journeys.append(UserJourneyStep(**step_dict))
-            journeys = clean_journeys
+                if isinstance(j, dict):
+                    valid_journeys.append(UserJourneyStep(**j))
+            journeys = valid_journeys
             primary = data.get("primary_actors", [input_data.intended_users[0] if input_data.intended_users else "Primary User"])
             secondary = data.get("secondary_actors", [input_data.intended_users[1] if len(input_data.intended_users) > 1 else "Secondary User"])
 

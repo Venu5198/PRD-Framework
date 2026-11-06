@@ -331,12 +331,6 @@ class RequirementEngineer:
                             desc = re.sub(r"The system append\b", "The system appends", desc, flags=re.IGNORECASE)
                             desc = re.sub(r"The system if\b", "The system evaluates condition: if", desc, flags=re.IGNORECASE)
 
-                        # Harmonize word limits for context summaries to prevent cross-section contradictions
-                        clean_beh = re.sub(r"\b(?:100|150)\s*words?\b|≤\s*(?:100|150)\s*words?", "under 200 words", clean_beh, flags=re.IGNORECASE)
-                        if desc:
-                            desc = re.sub(r"\b(?:100|150)\s*words?\b|≤\s*(?:100|150)\s*words?", "under 200 words", desc, flags=re.IGNORECASE)
-                        constraint = re.sub(r"\b(?:100|150)\s*words?\b|≤\s*(?:100|150)\s*words?", "under 200 words", constraint, flags=re.IGNORECASE)
-
                         validated_frs.append({
                             "id": fid,
                             "title": title,
@@ -376,12 +370,6 @@ class RequirementEngineer:
                     for nfr in validated_nfrs:
                         desc = nfr.get("description", "")
                         classification = nfr.get("classification", "Proposed target")
-                        # Remove hot standby / failover mandate from description
-                        if "hot standby" in desc.lower() or "automatic failover" in desc.lower():
-                            desc = re.sub(r",?\s*(?:employing\s+)?automatic\s+failover\s+to\s+(?:a\s+)?hot\s+standby\s+instance\s+in\s+a\s+different\s+availability\s+zone", " with standard error logging [Open Architectural Decision: Multi-zone failover pending infrastructure review]", desc, flags=re.IGNORECASE)
-                            desc = re.sub(r"employing\s+automatic\s+failover\s+to\s+(?:a\s+)?hot\s+standby[^\.,]*", "with local retry queuing [Open Architectural Decision: Standby failover scheme pending review]", desc, flags=re.IGNORECASE)
-                            nfr["description"] = desc
-
                         # Check if numerical SLA or encryption is unconfirmed
                         has_ungrounded_target = bool(re.search(
                             r"\b(?:within\s+\d+\s*(?:seconds?|secs?|s)|<\s*\d+\s*(?:seconds?|secs?|ms)|99\.\d+%\s*(?:uptime|availability|monthly)|aes-256|tls\s*1\.[23])\b",
@@ -413,43 +401,6 @@ class RequirementEngineer:
                         id_mapping[old_id] = new_id
                         fr["id"] = new_id
 
-                    # 2. Post-process FRs to sanitize retention, latency, and preconditions
-                    for f in validated_frs:
-                        desc = f.get("description", "")
-                        b_const = f.get("business_constraint", "")
-                        behavior = f.get("behavior", "")
-                        precond = f.get("precondition", "")
-
-                        # Sanitize ungrounded 30-day and 24-hour retention from precondition, description, and constraints
-                        if any(term in precond.lower() for term in ["30 days", "30-day", "24 hours", "24-hour", "24h"]):
-                            f["precondition"] = re.sub(
-                                r"(?:less\s+than|within|up\s+to)?\s*(?:30\s*days|24\s*hours|24h)(?:\s+old)?",
-                                "within the active dialogue session",
-                                precond,
-                                flags=re.IGNORECASE
-                            )
-                        if any(term in desc.lower() or term in b_const.lower() or term in behavior.lower() for term in ["30 days", "30-day", "24 hours", "24-hour", "24h"]):
-                            desc = re.sub(r"\b(?:less\s+than\s+(?:30\s*days|24\s*hours)(?:\s+old)?|(?:30-day|24-hour)\s+session|retention\s+of\s+at\s+least\s+(?:30\s*days|24\s*hours)|minimum\s+of\s+(?:30\s*days|24\s*hours)|retained\s+for\s+(?:30\s*days|24\s*hours)|cached\s+up\s+to\s+24\s*hours)\b", "active dialogue transcript is maintained in session memory; archival retention duration is an unresolved decision", desc, flags=re.IGNORECASE)
-                            b_const = re.sub(r"\b(?:less\s+than\s+(?:30\s*days|24\s*hours)(?:\s+old)?|(?:30-day|24-hour)\s+session|retention\s+of\s+at\s+least\s+(?:30\s*days|24\s*hours)|minimum\s+of\s+(?:30\s*days|24\s*hours)|retained\s+for\s+(?:30\s*days|24\s*hours)|cached\s+up\s+to\s+24\s*hours)\b", "operational data retention duration is an unresolved decision", b_const, flags=re.IGNORECASE)
-                            behavior = re.sub(r"\b(?:less\s+than\s+(?:30\s*days|24\s*hours)(?:\s+old)?|(?:30-day|24-hour)\s+session|retention\s+of\s+at\s+least\s+(?:30\s*days|24\s*hours)|minimum\s+of\s+(?:30\s*days|24\s*hours)|retained\s+for\s+(?:30\s*days|24\s*hours)|cached\s+up\s+to\s+24\s*hours)\b", "persists active dialogue context in session memory", behavior, flags=re.IGNORECASE)
-                            f["description"] = desc
-                            f["business_constraint"] = b_const
-                            f["behavior"] = behavior
-
-                        # Sanitize ungrounded operational latency SLA in FRs
-                        if "within 2 seconds" in desc or "< 2 seconds" in desc or "within 2 seconds" in behavior or "within 2 seconds" in b_const:
-                            desc = re.sub(r"\b(?:must be initiated\s+)?within\s+2\s*seconds(?:\s+of detection)?\b", "routes to internal escalation queue with context summary", desc, flags=re.IGNORECASE)
-                            behavior = re.sub(r"\b(?:must be initiated\s+)?within\s+2\s*seconds(?:\s+of detection)?\b", "routes to internal escalation queue with context summary", behavior, flags=re.IGNORECASE)
-                            b_const = re.sub(r"\b(?:must be initiated\s+)?within\s+2\s*seconds(?:\s+of detection)?\b", "routing must preserve full context summary", b_const, flags=re.IGNORECASE)
-                            f["description"] = desc
-                            f["business_constraint"] = b_const
-                            f["behavior"] = behavior
-
-                        # Sanitize external ticketing API mentions to internal escalation queue
-                        if "ticketing api" in desc.lower() or "ticketing system" in desc.lower():
-                            f["description"] = re.sub(r"\b(?:ticketing api|ticketing system)\b", "internal escalation queue", f["description"], flags=re.IGNORECASE)
-                            f["behavior"] = re.sub(r"\b(?:ticketing api|ticketing system)\b", "internal escalation queue", f.get("behavior", ""), flags=re.IGNORECASE)
-
                     # 3. Acceptance Criteria processing: filter generic boilerplate and align with valid FRs
                     validated_acs = []
                     context_text = (analysis.product_category + " " + analysis.problem_domain + " " + " ".join(analysis.core_objectives) + " " + " ".join(analysis.explicit_constraints)).lower()
@@ -471,7 +422,6 @@ class RequirementEngineer:
                         ]) or len(stmt) < 30 or "Given" not in stmt
                         if is_boilerplate:
                             continue
-                        stmt = re.sub(r"\b(?:100|150)\s*words?\b|≤\s*(?:100|150)\s*words?", "under 200 words", stmt, flags=re.IGNORECASE)
                         validated_acs.append({
                             "id": f"AC-{len(validated_acs)+1:03d}",
                             "requirement_id": new_rid,

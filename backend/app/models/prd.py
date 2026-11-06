@@ -13,12 +13,19 @@ class CanonicalProvenance(str, Enum):
 
 class ProvenanceEntry(BaseModel):
     statement_id: str
+    claim_id: Optional[str] = None
     section_key: str
+    section_name: Optional[str] = None
     statement_text: str
     classification: str
+    source_document: Optional[str] = "User Submission"
     source_reference: str
-    source_field: Optional[str] = None
-    related_requirement_id: Optional[str] = None
+    source_excerpt: Optional[str] = None
+    source_location: Optional[str] = None
+    related_requirement_id: Optional[str] = "N/A"
+    verification_result: str = "VERIFIED"
+    verification_method: str = "DETERMINISTIC_ENTAILMENT"
+    final_disposition: str = "NORMATIVE_BASELINE"
     confidence_or_status: Optional[str] = None
     is_approved_baseline: bool = True
 
