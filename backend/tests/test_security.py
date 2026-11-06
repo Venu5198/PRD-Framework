@@ -116,3 +116,41 @@ async def test_security_duplicate_username_enforcement():
         })
         assert res2.status_code == 400
         assert "already registered" in res2.json()["detail"]
+
+@pytest.mark.asyncio
+async def test_security_user_isolation():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        import time
+        ts = int(time.time() * 1000)
+
+        # Register User A & create project
+        await ac.post("/api/v1/auth/register", json={
+            "username": f"user_a_{ts}",
+            "email": f"user_a_{ts}@example.com",
+            "password": "Password123!"
+        })
+        log_a = await ac.post("/api/v1/auth/login", json={
+            "username": f"user_a_{ts}",
+            "password": "Password123!"
+        })
+        token_a = log_a.json()["access_token"]
+        p_res = await ac.post("/api/v1/projects", json={"title": "Private Project A"}, headers={"Authorization": f"Bearer {token_a}"})
+        proj_id = p_res.json()["id"]
+
+        # Register User B
+        await ac.post("/api/v1/auth/register", json={
+            "username": f"user_b_{ts}",
+            "email": f"user_b_{ts}@example.com",
+            "password": "Password123!"
+        })
+        log_b = await ac.post("/api/v1/auth/login", json={
+            "username": f"user_b_{ts}",
+            "password": "Password123!"
+        })
+        token_b = log_b.json()["access_token"]
+
+        # User B attempts to access User A's project
+        cross_res = await ac.get(f"/api/v1/projects/{proj_id}", headers={"Authorization": f"Bearer {token_b}"})
+        assert cross_res.status_code == 404
+        assert "Project not found" in cross_res.json()["detail"]

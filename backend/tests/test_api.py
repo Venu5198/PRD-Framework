@@ -51,13 +51,13 @@ async def test_full_user_workflow():
         assert sub_res.status_code == 200
 
         # 6. Analyze Input
-        an_res = await ac.post(f"/api/v1/analysis/{project_id}/analyze", headers=headers)
+        an_res = await ac.post(f"/api/v1/analysis/{project_id}/analyze?use_mock=true", headers=headers)
         assert an_res.status_code == 200
         analysis_data = an_res.json()
         assert len(analysis_data["core_objectives"]) > 0
 
         # 7. Generate Clarifications
-        clar_res = await ac.post(f"/api/v1/analysis/{project_id}/clarifications/generate", headers=headers)
+        clar_res = await ac.post(f"/api/v1/analysis/{project_id}/clarifications/generate?use_mock=true", headers=headers)
         assert clar_res.status_code == 200
         qs = clar_res.json()["questions"]
         assert len(qs) > 0
@@ -71,8 +71,8 @@ async def test_full_user_workflow():
         }, headers=headers)
         assert ans_res.status_code == 200
 
-        # 9. Generate Full PRD
-        prd_res = await ac.post(f"/api/v1/prd/{project_id}/generate", headers=headers)
+        # 9. Generate Full PRD (Using deterministic mock in rapid integration test)
+        prd_res = await ac.post(f"/api/v1/prd/{project_id}/generate?use_mock=true", headers=headers)
         assert prd_res.status_code == 200
         prd_ver = prd_res.json()
         assert prd_ver["version_number"] == "v1.0"
@@ -96,7 +96,7 @@ async def test_full_user_workflow():
 
         # 12. Regenerate Section
         regen_res = await ac.post(
-            f"/api/v1/prd/{project_id}/sections/proposed_solution/regenerate",
+            f"/api/v1/prd/{project_id}/sections/proposed_solution/regenerate?use_mock=true",
             json={"guidance": "Emphasize security and offline guarantees."},
             headers=headers
         )

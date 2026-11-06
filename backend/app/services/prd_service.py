@@ -1,4 +1,5 @@
 import time
+import asyncio
 import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -54,14 +55,14 @@ class PRDService:
         self.clarification_repo = clarification_repo
         self.gen_run_repo = gen_run_repo
 
-    async def analyze_submission(self, project_id: str) -> AnalysisRecord:
+    async def analyze_submission(self, project_id: str, force_mock: bool = False) -> AnalysisRecord:
         """Run stage 1: Input Analysis."""
         submissions = await self.submission_repo.get_by_project(project_id)
         if not submissions:
             raise ValueError("No idea submission found for this project.")
         
         latest_sub = IdeaSubmissionResponse(**submissions[0])
-        ai_gw = await get_ai_gateway()
+        ai_gw = await get_ai_gateway(force_mock=force_mock)
         analyzer = InputAnalyzer(ai_gw)
         
         start_t = time.time()
@@ -88,6 +89,13 @@ class PRDService:
         ))
         if prob_res.problem_domain and prob_res.problem_domain != "Software Architecture":
             analysis.problem_domain = prob_res.problem_domain
+        analysis.root_pain_points = prob_res.root_pain_points or []
+        analysis.current_limitations = prob_res.current_limitations or []
+        analysis.desired_outcomes = prob_res.desired_outcomes or []
+        if prob_res.desired_outcomes:
+            for outcome in prob_res.desired_outcomes:
+                if outcome not in analysis.core_objectives:
+                    analysis.core_objectives.append(outcome)
 
         duration = time.time() - start_t
 
@@ -106,14 +114,14 @@ class PRDService:
 
         return analysis
 
-    async def generate_clarifications(self, project_id: str):
+    async def generate_clarifications(self, project_id: str, force_mock: bool = False):
         """Run stage 2: Clarification Questions."""
         analysis_doc = await self.analysis_repo.get_latest_by_project(project_id)
         if not analysis_doc:
             raise ValueError("Project has not been analyzed yet.")
         
         analysis = AnalysisRecord(**analysis_doc)
-        ai_gw = await get_ai_gateway()
+        ai_gw = await get_ai_gateway(force_mock=force_mock)
         engine = ClarificationEngine(ai_gw)
 
         session = await engine.generate_questions(analysis)
@@ -146,15 +154,32 @@ class PRDService:
         await self.clarification_repo.update(session_doc["id"], {"questions": questions})
         return session_doc
 
-    async def generate_full_prd(self, project_id: str, user_id: str) -> PRDVersion:
+    async def generate_full_prd(
+        self,
+        project_id: str,
+        user_id: str,
+        force_mock: bool = False,
+        on_progress: Optional[Any] = None,
+        check_cancelled: Optional[Any] = None,
+        job_id: Optional[str] = None,
+        requested_version: Optional[str] = None
+    ) -> PRDVersion:
         """Run stages 3, 4 & 5: Requirements, Business Rules, and 27-Section Assembly."""
         project = await self.project_repo.get_by_id(project_id)
         if not project:
             raise ValueError("Project not found.")
+        if user_id and project.get("owner_id") != user_id:
+            raise ValueError("Access denied: Project does not belong to user.")
+
+        # Stage 1: Input Analysis Check
+        if on_progress:
+            await on_progress("input_analysis", [], {"stage_name": "Input Analysis & Context Extraction", "step": 1, "total_steps": 6})
+        if check_cancelled and await check_cancelled():
+            raise asyncio.CancelledError("Job cancelled by user.")
 
         analysis_doc = await self.analysis_repo.get_latest_by_project(project_id)
         if not analysis_doc:
-            analysis = await self.analyze_submission(project_id)
+            analysis = await self.analyze_submission(project_id, force_mock=force_mock)
         else:
             analysis = AnalysisRecord(**analysis_doc)
 
@@ -162,14 +187,24 @@ class PRDService:
         from app.models.clarification import ClarificationSession
         clarification_session = ClarificationSession(**clarification_doc) if clarification_doc else None
 
-        ai_gw = await get_ai_gateway()
+        ai_gw = await get_ai_gateway(force_mock=force_mock)
         req_engineer = RequirementEngineer(ai_gw)
         generator = PRDGenerator(ai_gw)
 
         start_time = time.time()
+
+        # Stage 2: Requirement Engineering
+        if on_progress:
+            await on_progress("requirements_engineering", ["input_analysis"], {"stage_name": "Requirement Engineering", "step": 2, "total_steps": 6})
+        if check_cancelled and await check_cancelled():
+            raise asyncio.CancelledError("Job cancelled by user.")
         requirements_data = await req_engineer.engineer(analysis, clarification_session)
 
-        # 5. Stakeholder Analyst
+        # Stage 3: Stakeholder Analyst
+        if on_progress:
+            await on_progress("stakeholder_analysis", ["input_analysis", "requirements_engineering"], {"stage_name": "Stakeholder & Persona Analysis", "step": 3, "total_steps": 6})
+        if check_cancelled and await check_cancelled():
+            raise asyncio.CancelledError("Job cancelled by user.")
         stakeholder_analyst = StakeholderAnalyst(ai_gw)
         sh_res = await stakeholder_analyst.analyze(StakeholderAnalystInput(
             product_category=analysis.product_category,
@@ -179,20 +214,54 @@ class PRDService:
         requirements_data["stakeholders"] = [p.dict() for p in sh_res.personas]
         requirements_data["user_journeys"] = [j.dict() for j in sh_res.user_journeys]
 
-        # 7. Business Rules Analyst
+        # Stage 4: Business Rules Analyst
+        if on_progress:
+            await on_progress("business_rules", ["input_analysis", "requirements_engineering", "stakeholder_analysis"], {"stage_name": "Business Rules Extraction", "step": 4, "total_steps": 6})
+        if check_cancelled and await check_cancelled():
+            raise asyncio.CancelledError("Job cancelled by user.")
+        clarif_confirmed = []
+        clarif_answers = []
+        if clarification_session and clarification_session.questions:
+            for q in clarification_session.questions:
+                if q.user_answer:
+                    clarif_confirmed.append(f"{q.question}: {q.user_answer}")
+                    clarif_answers.append(f"{q.question}: {q.user_answer}")
+                elif q.resolved_as_assumption and q.documented_assumption:
+                    clarif_answers.append(f"{q.question}: Assumed {q.documented_assumption}")
+
+        asg_constraints = []
+        if analysis.assignment_requirements and analysis.assignment_requirements.constraints:
+            asg_constraints = analysis.assignment_requirements.constraints
+
+        subs = await self.submission_repo.get_by_project(project_id)
+        raw_idea = subs[0].get("raw_idea") if subs else None
+
         br_analyst = BusinessRulesAnalyst(ai_gw)
         br_res = await br_analyst.extract_rules(BusinessRulesInput(
             domain=analysis.problem_domain,
             objectives=analysis.core_objectives,
-            constraints=analysis.explicit_constraints
+            constraints=analysis.explicit_constraints,
+            confirmed_facts=analysis.facts,
+            assignment_constraints=asg_constraints,
+            confirmed_clarifications=clarif_confirmed,
+            raw_idea=raw_idea,
+            clarifications=clarif_answers
         ))
-        # Merge or ensure business rules are fully populated
-        existing_br_ids = {b.get("id") for b in requirements_data.get("business_rules", [])}
+        # Merge or ensure business rules are fully populated with unique IDs
+        current_rules = requirements_data.get("business_rules", [])
+        existing_br_titles = {b.get("title", "").strip().lower() for b in current_rules}
         for br in br_res.business_rules:
-            if br.id not in existing_br_ids:
-                requirements_data.setdefault("business_rules", []).append(br.dict())
+            if br.title.strip().lower() not in existing_br_titles:
+                current_rules.append(br.dict())
+        for idx, br_item in enumerate(current_rules, 1):
+            br_item["id"] = f"BR-{idx:03d}"
+        requirements_data["business_rules"] = current_rules
 
-        # 8. Risk Analyst
+        # Stage 5: Risk Analyst
+        if on_progress:
+            await on_progress("risk_analysis", ["input_analysis", "requirements_engineering", "stakeholder_analysis", "business_rules"], {"stage_name": "Risk & Mitigation Analysis", "step": 5, "total_steps": 6})
+        if check_cancelled and await check_cancelled():
+            raise asyncio.CancelledError("Job cancelled by user.")
         risk_analyst = RiskAnalyst(ai_gw)
         risk_res = await risk_analyst.analyze_risks(RiskAnalystInput(
             problem_domain=analysis.problem_domain,
@@ -201,22 +270,14 @@ class PRDService:
         ))
         requirements_data["risks"] = [r.dict() for r in risk_res.risks]
 
-        # 9. PRD Generator
-        sections = await generator.generate_full_prd(
-            project_title=project.get("title", "Project"),
-            analysis=analysis,
-            clarification_session=clarification_session,
-            requirements_data=requirements_data
-        )
-        duration = time.time() - start_time
-
-        # Check existing PRD document or create
+        # Resolve target version and PRD ID before section generation
         existing_prd = await self.prd_repo.get_by_project(project_id)
         if not existing_prd:
+            target_version = requested_version or "v1.0"
             prd_data = {
                 "project_id": project_id,
                 "title": f"PRD for {project.get('title')}",
-                "current_version_number": "v1.0",
+                "current_version_number": target_version,
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }
@@ -224,19 +285,42 @@ class PRDService:
             prd_id = prd_doc["id"]
         else:
             prd_id = existing_prd["id"]
+            if requested_version:
+                target_version = requested_version
+            else:
+                prior_versions = await self.version_repo.get_by_prd(prd_id)
+                target_version = f"v{len(prior_versions) + 1}.0"
 
-        # Calculate next version number
-        prior_versions = await self.version_repo.get_by_prd(prd_id)
-        next_ver = f"v{len(prior_versions) + 1}.0"
+        # Stage 6: Canonical 27-Section Assembly
+        if on_progress:
+            await on_progress("prd_assembly", ["input_analysis", "requirements_engineering", "stakeholder_analysis", "business_rules", "risk_analysis"], {"stage_name": "Synthesizing Canonical 27-Section PRD", "step": 6, "total_steps": 6})
+        if check_cancelled and await check_cancelled():
+            raise asyncio.CancelledError("Job cancelled by user.")
+        sections = await generator.generate_full_prd(
+            project_title=project.get("title", "Project"),
+            analysis=analysis,
+            clarification_session=clarification_session,
+            requirements_data=requirements_data,
+            version_number=target_version,
+            job_id=job_id
+        )
+        duration = time.time() - start_time
+
+        # Extract content hash from document_information
+        import re
+        hash_match = re.search(r"Content Hash \(SHA-256\):\*\* `([a-f0-9]{64})`", sections.get("document_information", PRDSectionContent(key="d", title="d", content="")).content)
+        content_hash = hash_match.group(1) if hash_match else None
 
         # Create immutable version record
         version_data = {
             "prd_id": prd_id,
             "project_id": project_id,
-            "version_number": next_ver,
+            "job_id": job_id,
+            "version_number": target_version,
+            "content_hash": content_hash,
             "status": "draft",
             "sections": {k: v.dict() for k, v in sections.items()},
-            "changelog": "Initial full PRD generation",
+            "changelog": f"Full PRD generation {target_version}",
             "created_at": datetime.utcnow(),
             "created_by": user_id
         }
@@ -246,7 +330,7 @@ class PRDService:
         # Update active version reference in PRD and Project
         await self.prd_repo.update(prd_id, {
             "current_version_id": version_id,
-            "current_version_number": next_ver,
+            "current_version_number": target_version,
             "updated_at": datetime.utcnow()
         })
         await self.project_repo.update(project_id, {
@@ -268,6 +352,10 @@ class PRDService:
 
     async def update_section(self, project_id: str, section_key: str, payload: SectionUpdatePayload, user_id: str) -> PRDVersion:
         """Section editing creates a new minor version (e.g. v1.1) to preserve immutability."""
+        project = await self.project_repo.get_by_id(project_id)
+        if not project or (user_id and project.get("owner_id") != user_id):
+            raise ValueError("Access denied: Project does not belong to user.")
+
         prd = await self.prd_repo.get_by_project(project_id)
         if not prd or not prd.get("current_version_id"):
             raise ValueError("No active PRD found to edit.")
@@ -318,7 +406,7 @@ class PRDService:
 
         return PRDVersion(**saved_ver)
 
-    async def regenerate_section(self, project_id: str, section_key: str, payload: SectionRegeneratePayload, user_id: str) -> PRDVersion:
+    async def regenerate_section(self, project_id: str, section_key: str, payload: SectionRegeneratePayload, user_id: str, force_mock: bool = False) -> PRDVersion:
         """Regenerates a single section using local AI and user guidance."""
         prd = await self.prd_repo.get_by_project(project_id)
         if not prd or not prd.get("current_version_id"):
@@ -327,7 +415,7 @@ class PRDService:
         latest_ver_doc = await self.version_repo.get_by_id(prd["current_version_id"])
         current_ver = PRDVersion(**latest_ver_doc)
 
-        ai_gw = await get_ai_gateway()
+        ai_gw = await get_ai_gateway(force_mock=force_mock)
         sec_title = SECTION_TITLES.get(section_key, section_key)
         
         prompt = (

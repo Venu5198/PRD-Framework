@@ -1,0 +1,18 @@
+{
+  "timestamp": "2026-11-04T11:09:29.036507",
+  "model": "llama3.2:latest (2.0 GB)",
+  "durations": {
+    "input_analysis_seconds": 189.29,
+    "clarification_seconds": 95.32,
+    "prd_generation_seconds": 549.73
+  },
+  "metrics": {
+    "canonical_sections": 27,
+    "functional_requirements": 7,
+    "user_stories": 7,
+    "acceptance_criteria": 10,
+    "business_rules": 10,
+    "validation_score": 100,
+    "is_valid": true
+  }
+}

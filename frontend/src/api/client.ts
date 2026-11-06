@@ -6,7 +6,9 @@ import {
   ClarificationSession,
   PRDVersion,
   ValidationReport,
-  SystemHealth
+  SystemHealth,
+  Job,
+  JobCreateResponse
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -183,7 +185,32 @@ class ApiClient {
     });
   }
 
-  // PRD
+  // PRD Asynchronous Generation Jobs
+  async startPRDGeneration(projectId: string, useMock: boolean = false): Promise<JobCreateResponse> {
+    return this.request<JobCreateResponse>(`/projects/${projectId}/prd/generate?use_mock=${useMock}`, {
+      method: 'POST'
+    });
+  }
+
+  async getJob(jobId: string): Promise<Job> {
+    return this.request<Job>(`/jobs/${jobId}`);
+  }
+
+  async getJobResult(jobId: string): Promise<PRDVersion> {
+    return this.request<PRDVersion>(`/jobs/${jobId}/result`);
+  }
+
+  async cancelJob(jobId: string): Promise<{ job_id: string; status: string; message: string }> {
+    return this.request(`/jobs/${jobId}/cancel`, {
+      method: 'POST'
+    });
+  }
+
+  async getActivePRDJob(projectId: string): Promise<Job | null> {
+    return this.request<Job | null>(`/projects/${projectId}/prd/job`);
+  }
+
+  // PRD Synchronous fallback
   async generatePRD(projectId: string): Promise<PRDVersion> {
     return this.request<PRDVersion>(`/prd/${projectId}/generate`, {
       method: 'POST'
@@ -233,19 +260,47 @@ class ApiClient {
   }
 
   // Validation
-  async validatePRD(projectId: string): Promise<ValidationReport> {
-    return this.request<ValidationReport>(`/validation/${projectId}/validate`, {
+  async validatePRD(projectId: string, versionId?: string): Promise<ValidationReport> {
+    const query = versionId ? `?version_id=${encodeURIComponent(versionId)}` : '';
+    return this.request<ValidationReport>(`/validation/${projectId}/validate${query}`, {
       method: 'POST'
     });
   }
 
-  async getValidationReport(projectId: string): Promise<ValidationReport> {
-    return this.request<ValidationReport>(`/validation/${projectId}/report`);
+  async getValidationReport(projectId: string, versionId?: string): Promise<ValidationReport> {
+    const query = versionId ? `?version_id=${encodeURIComponent(versionId)}` : '';
+    return this.request<ValidationReport>(`/validation/${projectId}/report${query}`);
   }
 
-  // Export URLs
-  getExportUrl(projectId: string, format: 'markdown' | 'docx' | 'pdf'): string {
-    return `${API_BASE}/export/${projectId}/${format}`;
+  // Export URLs & Download Trigger
+  getExportUrl(projectId: string, format: 'markdown' | 'docx' | 'pdf', versionId?: string): string {
+    const token = this.getToken();
+    const params = new URLSearchParams();
+    if (token) params.set('token', token);
+    if (versionId) params.set('version_id', versionId);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return `${API_BASE}/export/${projectId}/${format}${qs}`;
+  }
+
+  async downloadExport(projectId: string, format: 'markdown' | 'docx' | 'pdf', filename?: string, versionId?: string): Promise<void> {
+    const token = this.getToken();
+    const qs = versionId ? `?version_id=${encodeURIComponent(versionId)}` : '';
+    const res = await fetch(`${API_BASE}/export/${projectId}/${format}${qs}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    if (!res.ok) {
+      throw new Error(`Export download failed with HTTP status ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const defaultExt = format === 'markdown' ? 'md' : format;
+    a.download = filename || `PRD_${projectId}.${defaultExt}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
   }
 }
 

@@ -15,6 +15,7 @@ class ValidationReport(BaseModel):
     prd_version_id: str
     project_id: str
     is_valid: bool
+    verdict: str = "APPROVED"  # "APPROVED" or "REJECTED"
     score: int = Field(..., ge=0, le=100)
     total_issues: int
     error_count: int

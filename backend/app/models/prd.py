@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -78,11 +78,22 @@ class PRDSectionContent(BaseModel):
     na_rationale: Optional[str] = None
     last_modified: datetime = Field(default_factory=datetime.utcnow)
 
+    @field_validator("content", mode="before")
+    @classmethod
+    def coerce_content_to_str(cls, v: Any) -> str:
+        if isinstance(v, list):
+            return "\n".join(f"- {item}" if not str(item).startswith("-") else str(item) for item in v)
+        elif isinstance(v, dict):
+            return "\n".join(f"- **{k}**: {val}" for k, val in v.items())
+        return str(v) if v is not None else ""
+
 class PRDVersion(BaseModel):
     id: Optional[str] = None
     prd_id: str
     project_id: str
     version_number: str = "v1.0"
+    job_id: Optional[str] = None
+    content_hash: Optional[str] = None
     status: str = Field(default="draft", description="'draft', 'approved', 'archived'")
     sections: Dict[str, PRDSectionContent] = Field(default_factory=dict)
     changelog: str = "Initial generation"

@@ -133,3 +133,38 @@ export interface SystemHealth {
   };
 }
 
+export interface Job {
+  job_id: string;
+  project_id: string;
+  job_type: string;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  current_stage: string;
+  completed_stages: string[];
+  total_stages: number;
+  progress_metadata: {
+    stage_name?: string;
+    step?: number;
+    total_steps?: number;
+    version_number?: string;
+    error?: string;
+    [key: string]: any;
+  };
+  provider: string;
+  model: string;
+  force_mock: boolean;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  elapsed_seconds?: number;
+  error_code?: string;
+  error_message?: string;
+  result_reference?: string;
+}
+
+export interface JobCreateResponse {
+  job_id: string;
+  status: string;
+  message: string;
+  is_existing: boolean;
+}
+

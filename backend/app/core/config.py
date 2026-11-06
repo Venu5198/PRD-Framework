@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Local-First Automated PRD Engineering Framework"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     
     # Security & Auth
     SECRET_KEY: str = os.getenv("SECRET_KEY", "local-development-secret-key-change-in-prod-1234567890")
@@ -31,12 +32,20 @@ class Settings(BaseSettings):
     MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "prd_framework")
     
+    # AI Provider Selection ("ollama", "groq")
+    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "ollama").lower()
+
     # AI Engine (Ollama)
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "llama3.2")
     FALLBACK_MODEL: str = os.getenv("FALLBACK_MODEL", "mistral")
-    AI_TIMEOUT_SECONDS: int = int(os.getenv("AI_TIMEOUT_SECONDS", "120"))
+    AI_TIMEOUT_SECONDS: int = int(os.getenv("AI_TIMEOUT_SECONDS", "180"))
     USE_OFFLINE_MOCK_IF_OLLAMA_DOWN: bool = os.getenv("USE_OFFLINE_MOCK_IF_OLLAMA_DOWN", "true").lower() in ("true", "1", "yes")
+
+    # Groq API Configuration
+    GROQ_API_KEY: Optional[str] = os.getenv("GROQ_API_KEY")
+    GROQ_BASE_URL: str = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     
     # Storage
     BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent

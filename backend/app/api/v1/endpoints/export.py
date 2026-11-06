@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from app.models.prd import PRDVersion
 from app.services.export_service import ExportService
@@ -17,6 +18,7 @@ router = APIRouter()
 async def export_prd(
     project_id: str,
     export_format: str,
+    version_id: Optional[str] = Query(None, description="Optional PRDVersion ID to export. If omitted, exports current version."),
     export_service: ExportService = Depends(get_export_service),
     prd_repo: PRDRepository = Depends(get_prd_repo),
     version_repo: PRDVersionRepository = Depends(get_version_repo),
@@ -24,14 +26,27 @@ async def export_prd(
     current_user: dict = Depends(get_current_user)
 ):
     project = await project_repo.get_by_id(project_id)
-    if not project:
+    if not project or project.get("owner_id") != current_user["id"]:
         raise HTTPException(status_code=404, detail="Project not found.")
 
     prd_doc = await prd_repo.get_by_project(project_id)
-    if not prd_doc or not prd_doc.get("current_version_id"):
-        raise HTTPException(status_code=404, detail="No PRD version available to export.")
+    if not prd_doc:
+        raise HTTPException(status_code=404, detail="No PRD available for this project.")
 
-    ver_doc = await version_repo.get_by_id(prd_doc["current_version_id"])
+    if version_id:
+        ver_doc = await version_repo.get_by_id(version_id)
+        if not ver_doc:
+            raise HTTPException(status_code=404, detail=f"PRD version '{version_id}' not found.")
+        # Validate that version belongs to this project and PRD
+        if ver_doc.get("project_id") != project_id or ver_doc.get("prd_id") != prd_doc["id"]:
+            raise HTTPException(status_code=404, detail=f"PRD version '{version_id}' does not belong to this project.")
+    else:
+        if not prd_doc.get("current_version_id"):
+            raise HTTPException(status_code=404, detail="No active PRD version available to export.")
+        ver_doc = await version_repo.get_by_id(prd_doc["current_version_id"])
+        if not ver_doc:
+            raise HTTPException(status_code=404, detail="Current PRD version record not found.")
+
     prd_version = PRDVersion(**ver_doc)
     proj_title = project.get("title", "Project")
 

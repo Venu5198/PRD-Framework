@@ -241,8 +241,8 @@ describe('Critical User Workflow Tests', () => {
     expect(screen.getByText('Markdown (.md)')).toBeInTheDocument();
     expect(screen.getByText('Microsoft Word (.docx)')).toBeInTheDocument();
     expect(screen.getByText('Adobe PDF (.pdf)')).toBeInTheDocument();
-    expect(api.getExportUrl).toHaveBeenCalledWith('proj-123', 'markdown');
-    expect(api.getExportUrl).toHaveBeenCalledWith('proj-123', 'docx');
-    expect(api.getExportUrl).toHaveBeenCalledWith('proj-123', 'pdf');
+    expect(api.getExportUrl).toHaveBeenCalledWith('proj-123', 'markdown', 'ver-1');
+    expect(api.getExportUrl).toHaveBeenCalledWith('proj-123', 'docx', 'ver-1');
+    expect(api.getExportUrl).toHaveBeenCalledWith('proj-123', 'pdf', 'ver-1');
   });
 });

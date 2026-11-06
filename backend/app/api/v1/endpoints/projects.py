@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from app.models.project import ProjectCreate, ProjectResponse, ProjectUpdate
 from app.models.submission import IdeaSubmissionCreate, IdeaSubmissionResponse
 from app.db.repository import ProjectRepository, SubmissionRepository
-from app.api.deps import get_project_repo, get_submission_repo, get_current_user
+from app.db.job_repository import JobRepository
+from app.api.deps import get_project_repo, get_submission_repo, get_job_repo, get_current_user
+from app.models.job import Job, JobCreateResponse, JobResponse, JobStatus
 from app.core.config import settings
 
 router = APIRouter()
@@ -41,9 +43,38 @@ async def get_project(
     current_user: dict = Depends(get_current_user)
 ):
     project = await project_repo.get_by_id(project_id)
-    if not project:
+    if not project or project.get("owner_id") != current_user["id"]:
         raise HTTPException(status_code=404, detail="Project not found")
     return ProjectResponse(**project)
+
+@router.patch("/{project_id}", response_model=ProjectResponse)
+async def update_project(
+    project_id: str,
+    project_update: ProjectUpdate,
+    project_repo: ProjectRepository = Depends(get_project_repo),
+    current_user: dict = Depends(get_current_user)
+):
+    project = await project_repo.get_by_id(project_id)
+    if not project or project.get("owner_id") != current_user["id"]:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    update_data = {k: v for k, v in project_update.dict().items() if v is not None}
+    update_data["updated_at"] = datetime.utcnow()
+    await project_repo.update(project_id, update_data)
+    updated = await project_repo.get_by_id(project_id)
+    return ProjectResponse(**updated)
+
+@router.delete("/{project_id}")
+async def delete_project(
+    project_id: str,
+    project_repo: ProjectRepository = Depends(get_project_repo),
+    current_user: dict = Depends(get_current_user)
+):
+    project = await project_repo.get_by_id(project_id)
+    if not project or project.get("owner_id") != current_user["id"]:
+        raise HTTPException(status_code=404, detail="Project not found")
+    await project_repo.delete(project_id)
+    return {"status": "deleted", "id": project_id}
 
 @router.post("/{project_id}/submissions", response_model=IdeaSubmissionResponse)
 async def submit_idea(
@@ -54,7 +85,7 @@ async def submit_idea(
     current_user: dict = Depends(get_current_user)
 ):
     project = await project_repo.get_by_id(project_id)
-    if not project:
+    if not project or project.get("owner_id") != current_user["id"]:
         raise HTTPException(status_code=404, detail="Project not found")
 
     data = submission_in.dict()
@@ -74,7 +105,7 @@ async def upload_reference_document(
     current_user: dict = Depends(get_current_user)
 ):
     project = await project_repo.get_by_id(project_id)
-    if not project:
+    if not project or project.get("owner_id") != current_user["id"]:
         raise HTTPException(status_code=404, detail="Project not found")
 
     import uuid
@@ -146,8 +177,86 @@ async def upload_reference_document(
 async def list_submissions(
     project_id: str,
     submission_repo: SubmissionRepository = Depends(get_submission_repo),
+    project_repo: ProjectRepository = Depends(get_project_repo),
     current_user: dict = Depends(get_current_user)
 ):
+    project = await project_repo.get_by_id(project_id)
+    if not project or project.get("owner_id") != current_user["id"]:
+        raise HTTPException(status_code=404, detail="Project not found")
     subs = await submission_repo.get_by_project(project_id)
     return [IdeaSubmissionResponse(**s) for s in subs]
+
+@router.post("/{project_id}/prd/generate", status_code=202, response_model=JobCreateResponse)
+async def generate_prd_job(
+    project_id: str,
+    use_mock: bool = False,
+    project_repo: ProjectRepository = Depends(get_project_repo),
+    job_repo: JobRepository = Depends(get_job_repo),
+    current_user: dict = Depends(get_current_user)
+):
+    project = await project_repo.get_by_id(project_id)
+    if not project or project.get("owner_id") != current_user["id"]:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Idempotency check: if an active job already exists for this project, return it
+    existing_job = await job_repo.get_active_job_for_project(project_id)
+    if existing_job:
+        return JobCreateResponse(
+            job_id=existing_job["job_id"],
+            status=existing_job.get("status", JobStatus.QUEUED),
+            message="PRD generation job is already in progress or queued.",
+            is_existing=True
+        )
+
+    # Create new queued job
+    import uuid
+    new_job_id = str(uuid.uuid4())
+    job_doc = {
+        "job_id": new_job_id,
+        "user_id": current_user["id"],
+        "project_id": project_id,
+        "job_type": "prd_generation",
+        "status": JobStatus.QUEUED,
+        "current_stage": "queued",
+        "completed_stages": [],
+        "total_stages": 6,
+        "progress_metadata": {"stage_name": "Queued", "step": 0, "total_steps": 6},
+        "provider": "offline_mock" if use_mock else settings.AI_PROVIDER,
+        "model": "offline_mock" if use_mock else (settings.GROQ_MODEL if settings.AI_PROVIDER == "groq" else settings.OLLAMA_MODEL),
+        "force_mock": use_mock,
+        "version_number": "v2.4.3",
+        "retry_count": 0,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    await job_repo.create_job(job_doc)
+    return JobCreateResponse(
+        job_id=new_job_id,
+        status=JobStatus.QUEUED,
+        message="PRD generation job queued successfully.",
+        is_existing=False
+    )
+
+@router.get("/{project_id}/prd/job", response_model=Optional[JobResponse])
+async def get_project_prd_job(
+    project_id: str,
+    project_repo: ProjectRepository = Depends(get_project_repo),
+    job_repo: JobRepository = Depends(get_job_repo),
+    current_user: dict = Depends(get_current_user)
+):
+    project = await project_repo.get_by_id(project_id)
+    if not project or project.get("owner_id") != current_user["id"]:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    from app.api.v1.endpoints.jobs import serialize_job
+    job = await job_repo.get_active_job_for_project(project_id)
+    if not job:
+        # Fall back to latest job if any
+        recent_jobs = await job_repo.find({"project_id": project_id}, sort=[("created_at", -1)], limit=1)
+        job = recent_jobs[0] if recent_jobs else None
+
+    if not job:
+        return None
+    return serialize_job(job)
+
 

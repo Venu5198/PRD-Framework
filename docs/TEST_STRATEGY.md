@@ -43,6 +43,11 @@ cd frontend
 npm run build
 ```
 
+### 2.4 Full-Stack Live Runtime Verification
+```bash
+python -u scripts/full_stack_verification.py
+```
+
 ---
 
 ## 3. Verified As-Built Test Results
@@ -69,12 +74,22 @@ npm run build
 **Execution Time:** 5.56s  
 **Overall Code Coverage:** 84%
 
-### 3.2 Frontend Test Results (7/7 Passed)
+### 3.2 Frontend Test Results (11/11 Passed)
 - `src/test/ApiClient.test.ts`: 2 tests passed (Export URLs, token persistence).
 - `src/test/ValidationBadge.test.tsx`: 3 tests passed (Pending state, score badge, error counters).
 - `src/test/SectionEditorModal.test.tsx`: 2 tests passed (Content rendering, save callback).
+- `src/test/Workflow.test.tsx`: 4 tests passed (Auth form toggling, project creation, clarification Q&A, export triggers).
 
-**Execution Time:** 9.88s
+**Execution Time:** 8.92s
+
+### 3.3 Full-Stack Live Runtime Verification Results (28/28 Assertions Passed)
+- Docker services health: prd-backend, prd-frontend, prd-mongodb, prd-ollama (ALL UP).
+- Authentication: Registration (User A & B), Login, Authenticated `/auth/me`, Expired token rejection, Invalid token rejection, Tokenless 401 guard.
+- Security validations: 15MB upload limit, extension allowlist, disguised PE executable rejection, path traversal sanitization, empty file rejection.
+- Database index verification: Unique username, unique email, compound owner-updated, unique project-PRD, unique PRD-version.
+- 16-step complete workflow: Ingestion, analysis, clarification Q&A, 27-section PRD assembly, section edit (v1.0 -> v1.1), validation score 100/100, Markdown/DOCX/PDF export binary integrity.
+- Multi-tenant isolation: Cross-user access blocked on projects, PRDs, validation, and exports (HTTP 404).
+- Persistence: Full project, PRD, and version history survived live container restart (`docker compose restart backend`).
 
 ---
 

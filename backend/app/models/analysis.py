@@ -27,6 +27,9 @@ class AnalysisRecord(BaseModel):
     missing_critical_info: List[str] = Field(default_factory=list)
     facts: List[str] = Field(default_factory=list)
     assumptions: List[str] = Field(default_factory=list)
+    root_pain_points: List[str] = Field(default_factory=list)
+    current_limitations: List[str] = Field(default_factory=list)
+    desired_outcomes: List[str] = Field(default_factory=list)
     assignment_requirements: Optional[AssignmentRequirement] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

@@ -81,11 +81,11 @@ export const SettingsPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             Requirement Engineering, and PRD Generation).
           </p>
 
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <select
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
-              className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-sky-500"
+              className="w-full min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-sky-500 truncate"
             >
               <option value="llama3.2">llama3.2 (Recommended: 3B Fast & Efficient)</option>
               <option value="mistral">mistral (7B Standard Architecture)</option>
@@ -100,7 +100,7 @@ export const SettingsPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <button
               onClick={handleSelectModel}
               disabled={saving}
-              className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition disabled:opacity-50"
+              className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition disabled:opacity-50 shrink-0"
             >
               {saving ? 'Updating...' : 'Set Active Model'}
             </button>

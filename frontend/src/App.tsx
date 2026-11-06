@@ -6,10 +6,32 @@ import { ProjectView } from './pages/ProjectView';
 import { SettingsPage } from './pages/SettingsPage';
 import { AuthPage } from './pages/AuthPage';
 
+const parseHashRoute = (): { view: 'dashboard' | 'project' | 'settings'; projectId: string | null } => {
+  if (typeof window === 'undefined') return { view: 'dashboard', projectId: null };
+  const hash = window.location.hash || '';
+  if (hash === '#/settings') return { view: 'settings', projectId: null };
+  if (hash.startsWith('#/project/')) {
+    const id = hash.replace('#/project/', '').trim();
+    if (id) return { view: 'project', projectId: id };
+  }
+  return { view: 'dashboard', projectId: null };
+};
+
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
-  const [currentView, setCurrentView] = useState<'dashboard' | 'project' | 'settings'>('dashboard');
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const initialRoute = parseHashRoute();
+  const [currentView, setCurrentView] = useState<'dashboard' | 'project' | 'settings'>(initialRoute.view);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialRoute.projectId);
+
+  React.useEffect(() => {
+    const handleHashChange = () => {
+      const route = parseHashRoute();
+      setCurrentView(route.view);
+      setSelectedProjectId(route.projectId);
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   if (loading) {
     return (
@@ -24,13 +46,11 @@ const AppContent: React.FC = () => {
   }
 
   const handleOpenProject = (id: string) => {
-    setSelectedProjectId(id);
-    setCurrentView('project');
+    window.location.hash = `#/project/${id}`;
   };
 
   const handleBackToDashboard = () => {
-    setSelectedProjectId(null);
-    setCurrentView('dashboard');
+    window.location.hash = '#/dashboard';
   };
 
   return (
@@ -39,7 +59,7 @@ const AppContent: React.FC = () => {
         currentView={currentView}
         onNavigate={(view) => {
           if (view === 'dashboard') handleBackToDashboard();
-          if (view === 'settings') setCurrentView('settings');
+          if (view === 'settings') window.location.hash = '#/settings';
         }}
       />
 

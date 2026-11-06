@@ -42,6 +42,24 @@ async def initialize_database_indexes(db: AsyncIOMotorDatabase):
         IndexModel([("created_at", ASCENDING)], name="idx_user_created")
     ])
 
+    # Seed default developer user if missing in non-production environments
+    from app.core.config import settings
+    if settings.ENVIRONMENT.lower() != "production":
+        existing_dev = await users_col.find_one({"username": "local_engineer"})
+        if not existing_dev:
+            from app.core.security import get_password_hash
+            from datetime import datetime
+            await users_col.insert_one({
+                "username": "local_engineer",
+                "email": "engineer@local.dev",
+                "full_name": "Local Engineer",
+                "role": "engineer",
+                "hashed_password": get_password_hash("password123"),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            })
+            logger.info("Auto-seeded default user 'local_engineer' ('password123').")
+
     # 2. Projects collection: owner_id index, updated_at index
     await db["projects"].create_indexes([
         IndexModel([("owner_id", ASCENDING), ("updated_at", -1)], name="idx_owner_updated"),
@@ -82,6 +100,15 @@ async def initialize_database_indexes(db: AsyncIOMotorDatabase):
     # 9. Generation runs collection (telemetry)
     await db["generation_runs"].create_indexes([
         IndexModel([("project_id", ASCENDING), ("created_at", -1)], name="idx_proj_generation_runs")
+    ])
+
+    # 10. Jobs collection: unique job_id, project status, user ordering, worker queue, heartbeat
+    await db["jobs"].create_indexes([
+        IndexModel([("job_id", ASCENDING)], unique=True, name="uniq_job_id"),
+        IndexModel([("project_id", ASCENDING), ("status", ASCENDING)], name="idx_proj_job_status"),
+        IndexModel([("user_id", ASCENDING), ("created_at", -1)], name="idx_user_jobs"),
+        IndexModel([("status", ASCENDING), ("created_at", ASCENDING)], name="idx_queue_status_created"),
+        IndexModel([("status", ASCENDING), ("heartbeat_at", ASCENDING)], name="idx_status_heartbeat")
     ])
 
     logger.info("MongoDB index initialization successfully completed.")

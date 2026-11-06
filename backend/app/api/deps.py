@@ -1,4 +1,5 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Query
+from typing import Optional
 from fastapi.security import OAuth2PasswordBearer
 from app.core.security import decode_access_token
 from app.db.repository import (
@@ -12,6 +13,7 @@ from app.db.repository import (
     ValidationRepository,
     GenerationRunRepository
 )
+from app.db.job_repository import JobRepository
 from app.services.prd_service import PRDService
 from app.services.validation_service import ValidationService
 from app.services.export_service import ExportService
@@ -60,18 +62,24 @@ def get_prd_service(
     )
 
 def get_validation_service(
-    validation_repo: ValidationRepository = Depends(get_validation_repo)
+    validation_repo: ValidationRepository = Depends(get_validation_repo),
+    analysis_repo: AnalysisRepository = Depends(get_analysis_repo)
 ) -> ValidationService:
-    return ValidationService(validation_repo)
+    return ValidationService(validation_repo, analysis_repo)
 
 def get_export_service() -> ExportService:
     return ExportService()
 
+def get_job_repo() -> JobRepository:
+    return JobRepository()
+
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: Optional[str] = Depends(oauth2_scheme),
+    token_query: Optional[str] = Query(None, alias="token"),
     user_repo: UserRepository = Depends(get_user_repo)
 ) -> dict:
-    if not token:
+    effective_token = token or token_query
+    if not effective_token:
         from app.core.config import settings
         if settings.ALLOW_DEV_AUTO_AUTH:
             dev_user = await user_repo.get_by_username("local_engineer")
@@ -91,7 +99,7 @@ async def get_current_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-    payload = decode_access_token(token)
+    payload = decode_access_token(effective_token)
     if not payload or not payload.get("sub"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

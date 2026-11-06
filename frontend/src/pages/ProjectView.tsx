@@ -5,7 +5,8 @@ import {
   ClarificationSession,
   PRDVersion,
   PRDSectionContent,
-  ValidationReport
+  ValidationReport,
+  Job
 } from '../types';
 import { api } from '../api/client';
 import { SectionEditorModal } from '../components/SectionEditorModal';
@@ -24,7 +25,10 @@ import {
   RefreshCw,
   Edit3,
   ShieldCheck,
-  Send
+  Send,
+  Clock,
+  Square,
+  Loader2
 } from 'lucide-react';
 
 interface ProjectViewProps {
@@ -57,6 +61,10 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
 
   const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
   const [validating, setValidating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [activeJob, setActiveJob] = useState<Job | null>(null);
+  const [jobTimer, setJobTimer] = useState<number>(0);
 
   const [editingSection, setEditingSection] = useState<PRDSectionContent | null>(null);
 
@@ -78,7 +86,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
 
       try {
         const prdRes = await api.getActivePRD(projectId);
-        if (prdRes.active_version) {
+        if (prdRes && prdRes.active_version) {
           setPrdVersion(prdRes.active_version);
           setActiveTab('prd'); // jump to PRD if already generated
         }
@@ -91,12 +99,74 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
 
       try {
         const rep = await api.getValidationReport(projectId);
-        setValidationReport(rep);
+        if (rep) setValidationReport(rep);
+      } catch (_) {}
+
+      // Check for active background PRD generation job
+      try {
+        const job = await api.getActivePRDJob(projectId);
+        if (job) {
+          setActiveJob(job);
+          if (job.elapsed_seconds) {
+            setJobTimer(job.elapsed_seconds);
+          }
+          if (job.status === 'queued' || job.status === 'running') {
+            setActiveTab('prd');
+          }
+        }
       } catch (_) {}
     } catch (err: any) {
-      alert(err.message);
+      setErrorMessage(err.message);
     }
   };
+
+  // Background Job Polling Loop
+  useEffect(() => {
+    let pollInterval: any = null;
+    let timerInterval: any = null;
+
+    if (activeJob && (activeJob.status === 'queued' || activeJob.status === 'running')) {
+      timerInterval = setInterval(() => {
+        setJobTimer((prev) => prev + 1);
+      }, 1000);
+
+      pollInterval = setInterval(async () => {
+        try {
+          const updatedJob = await api.getJob(activeJob.job_id);
+          setActiveJob(updatedJob);
+
+          if (updatedJob.status === 'completed') {
+            clearInterval(pollInterval);
+            clearInterval(timerInterval);
+            try {
+              const completedPrd = await api.getJobResult(updatedJob.job_id);
+              setPrdVersion(completedPrd);
+              setActiveTab('prd');
+              const vers = await api.getPRDVersions(projectId);
+              setVersionsList(vers);
+              handleValidatePRD();
+            } catch (resErr: any) {
+              setErrorMessage(resErr.message);
+            }
+          } else if (updatedJob.status === 'failed') {
+            clearInterval(pollInterval);
+            clearInterval(timerInterval);
+            setErrorMessage(`AI Generation Failed (${updatedJob.error_code || 'ERROR'}): ${updatedJob.error_message || 'Inference error'}`);
+          } else if (updatedJob.status === 'cancelled') {
+            clearInterval(pollInterval);
+            clearInterval(timerInterval);
+          }
+        } catch (pollErr: any) {
+          console.warn('Error polling job:', pollErr);
+        }
+      }, 2500);
+    }
+
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+      if (timerInterval) clearInterval(timerInterval);
+    };
+  }, [activeJob?.job_id, activeJob?.status, projectId]);
 
   useEffect(() => {
     loadProjectData();
@@ -107,6 +177,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
     e.preventDefault();
     if (!ideaText.trim()) return;
     setSubmitting(true);
+    setErrorMessage(null);
     try {
       await api.submitIdea(
         projectId,
@@ -124,7 +195,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
       // Automatically trigger analysis
       await handleTriggerAnalysis();
     } catch (err: any) {
-      alert(err.message);
+      setErrorMessage(err.message);
     } finally {
       setSubmitting(false);
     }
@@ -133,6 +204,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
   // 2. Trigger Analysis
   const handleTriggerAnalysis = async () => {
     setAnalyzing(true);
+    setErrorMessage(null);
     try {
       const an = await api.analyzeProject(projectId);
       setAnalysis(an);
@@ -141,7 +213,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
       // Auto trigger clarifications
       await handleGenerateClarifications();
     } catch (err: any) {
-      alert(err.message);
+      setErrorMessage(err.message);
     } finally {
       setAnalyzing(false);
     }
@@ -167,34 +239,44 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
       const updatedCl = await api.getClarifications(projectId);
       setClarifications(updatedCl);
     } catch (err: any) {
-      alert(err.message);
+      setErrorMessage(err.message);
     }
   };
 
-  // 4. Generate Full PRD
+  // 4. Generate Full PRD (Asynchronous Job Submission)
   const handleGeneratePRD = async () => {
     setGeneratingPrd(true);
+    setErrorMessage(null);
     try {
-      const ver = await api.generatePRD(projectId);
-      setPrdVersion(ver);
+      const resp = await api.startPRDGeneration(projectId);
+      setJobTimer(0);
+      const jobData = await api.getJob(resp.job_id);
+      setActiveJob(jobData);
       setActiveTab('prd');
-      // refresh version history
-      const vers = await api.getPRDVersions(projectId);
-      setVersionsList(vers);
-      // automatically validate
-      await handleValidatePRD();
     } catch (err: any) {
-      alert(err.message);
+      setErrorMessage(err.message);
     } finally {
       setGeneratingPrd(false);
     }
   };
 
+  const handleCancelJob = async () => {
+    if (!activeJob) return;
+    try {
+      await api.cancelJob(activeJob.job_id);
+      const updated = await api.getJob(activeJob.job_id);
+      setActiveJob(updated);
+    } catch (err: any) {
+      setErrorMessage(err.message);
+    }
+  };
+
   // 5. Validation
-  const handleValidatePRD = async () => {
+  const handleValidatePRD = async (targetVerId?: string) => {
     setValidating(true);
     try {
-      const rep = await api.validatePRD(projectId);
+      const vid = targetVerId || prdVersion?.id;
+      const rep = await api.validatePRD(projectId, vid);
       setValidationReport(rep);
     } catch (err: any) {
       console.warn(err);
@@ -230,7 +312,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
       setVersionsList(vers);
       alert(`Version ${approved.version_number} has been approved!`);
     } catch (err: any) {
-      alert(err.message);
+      setErrorMessage(err.message);
     }
   };
 
@@ -275,6 +357,22 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
           )}
         </div>
       </div>
+
+      {/* Global Error Banner */}
+      {errorMessage && (
+        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm flex items-center justify-between shadow-sm">
+          <div className="flex items-center space-x-2.5">
+            <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
+            <span className="font-medium">{errorMessage}</span>
+          </div>
+          <button
+            onClick={() => setErrorMessage(null)}
+            className="text-xs font-bold text-rose-700 bg-rose-100 hover:bg-rose-200 px-2.5 py-1 rounded transition ml-4 shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Navigation Tabs */}
       <div className="flex border-b border-slate-200 overflow-x-auto space-x-1 text-sm font-semibold">
@@ -663,22 +761,124 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
       {activeTab === 'prd' && (
         <div className="space-y-6">
           {!prdVersion ? (
-            <div className="bg-white p-12 text-center rounded-xl border border-slate-200 max-w-xl mx-auto space-y-4">
-              <FileText className="w-12 h-12 text-slate-300 mx-auto" />
-              <div>
-                <h3 className="text-base font-bold text-slate-900">PRD Document Not Generated Yet</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Complete the clarification stage or click below to synthesize all 27 canonical sections.
-                </p>
+            activeJob && (activeJob.status === 'queued' || activeJob.status === 'running') ? (
+              <div className="bg-white p-8 rounded-xl border border-sky-200 shadow-sm max-w-2xl mx-auto space-y-6">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-sky-50 text-sky-600 rounded-lg">
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">
+                        {activeJob.status === 'queued' ? 'Job Queued in Background' : 'AI PRD Synthesis in Progress'}
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Model: <span className="font-semibold">{activeJob.model}</span> ({activeJob.provider}) | Job ID: <span className="font-mono">{activeJob.job_id.slice(0, 8)}...</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-50 text-amber-800 text-xs font-mono font-medium rounded-full">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>{Math.floor(jobTimer / 60)}m {String(jobTimer % 60).padStart(2, '0')}s</span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs font-semibold text-slate-700">
+                    <span>{activeJob.progress_metadata?.stage_name || 'Processing...'}</span>
+                    <span>Stage {(activeJob.progress_metadata?.step || 1)} of {activeJob.total_stages}</span>
+                  </div>
+                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-sky-600 h-2 rounded-full transition-all duration-500 ease-out"
+                      style={{ width: `${Math.max(8, Math.round((activeJob.completed_stages.length / activeJob.total_stages) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Stage Checklist */}
+                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200/60 space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Sequential AI Pipeline Stages</p>
+                  {[
+                    { key: 'input_analysis', label: '1. Input Analysis & Context Extraction' },
+                    { key: 'requirements_engineering', label: '2. Functional & Non-Functional Requirements' },
+                    { key: 'stakeholder_analysis', label: '3. Stakeholder & Persona Analysis' },
+                    { key: 'business_rules', label: '4. Business Rules Extraction' },
+                    { key: 'risk_analysis', label: '5. Risk & Mitigation Engineering' },
+                    { key: 'prd_assembly', label: '6. Canonical 27-Section Synthesis' },
+                  ].map((stage) => {
+                    const isCompleted = activeJob.completed_stages.includes(stage.key);
+                    const isCurrent = activeJob.current_stage === stage.key;
+                    return (
+                      <div key={stage.key} className="flex items-center justify-between text-xs py-1">
+                        <span className={`flex items-center space-x-2 ${isCompleted ? 'text-emerald-700 font-medium' : isCurrent ? 'text-sky-700 font-bold' : 'text-slate-400'}`}>
+                          {isCompleted ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          ) : isCurrent ? (
+                            <RefreshCw className="w-4 h-4 text-sky-600 animate-spin" />
+                          ) : (
+                            <div className="w-4 h-4 rounded-full border border-slate-300" />
+                          )}
+                          <span>{stage.label}</span>
+                        </span>
+                        <span className="text-[10px] font-mono">
+                          {isCompleted ? 'DONE' : isCurrent ? 'IN PROGRESS' : 'WAITING'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex justify-between items-center pt-2">
+                  <p className="text-[11px] text-slate-400">
+                    Runs persistently on your local machine. You can refresh or leave this tab safely.
+                  </p>
+                  <button
+                    onClick={handleCancelJob}
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 rounded-lg transition"
+                  >
+                    <Square className="w-3.5 h-3.5" />
+                    <span>Cancel Generation</span>
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={handleGeneratePRD}
-                disabled={generatingPrd}
-                className="px-5 py-2.5 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition"
-              >
-                {generatingPrd ? 'Generating Complete PRD...' : 'Generate PRD Now'}
-              </button>
-            </div>
+            ) : activeJob && activeJob.status === 'failed' ? (
+              <div className="bg-white p-8 text-center rounded-xl border border-rose-200 max-w-xl mx-auto space-y-4 shadow-sm">
+                <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">PRD Generation Failed</h3>
+                  <p className="text-xs text-rose-600 font-mono mt-1 bg-rose-50 p-2 rounded">
+                    {activeJob.error_code}: {activeJob.error_message || 'Inference error occurred'}
+                  </p>
+                </div>
+                <button
+                  onClick={handleGeneratePRD}
+                  className="px-5 py-2.5 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition"
+                >
+                  Retry PRD Generation
+                </button>
+              </div>
+            ) : (
+              <div className="bg-white p-12 text-center rounded-xl border border-slate-200 max-w-xl mx-auto space-y-4">
+                <FileText className="w-12 h-12 text-slate-300 mx-auto" />
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">PRD Document Not Generated Yet</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Complete the clarification stage or click below to synthesize all 27 canonical sections.
+                  </p>
+                </div>
+                <button
+                  onClick={handleGeneratePRD}
+                  disabled={generatingPrd}
+                  className="px-5 py-2.5 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition"
+                >
+                  {generatingPrd ? 'Generating Complete PRD...' : 'Generate PRD Now'}
+                </button>
+              </div>
+            )
           ) : (
             <div className="space-y-6">
               {/* Document Banner */}
@@ -697,7 +897,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
 
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={handleValidatePRD}
+                    onClick={() => handleValidatePRD()}
                     disabled={validating}
                     className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition"
                   >
@@ -809,7 +1009,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
               </p>
             </div>
             <button
-              onClick={handleValidatePRD}
+              onClick={() => handleValidatePRD()}
               disabled={validating}
               className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition"
             >
@@ -914,9 +1114,18 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
                 </div>
 
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     setPrdVersion(ver);
                     setActiveTab('prd');
+                    try {
+                      const rep = await api.getValidationReport(projectId, ver.id);
+                      if (rep) {
+                        setValidationReport(rep);
+                      } else {
+                        const newRep = await api.validatePRD(projectId, ver.id);
+                        setValidationReport(newRep);
+                      }
+                    } catch (_) {}
                   }}
                   className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-md transition"
                 >
@@ -937,11 +1146,20 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
               Export validated requirements in industry standard formats with full tables,
               headers, and acceptance criteria preserved.
             </p>
+            {prdVersion && (
+              <p className="text-xs font-semibold text-slate-700 pt-1">
+                Currently Selected Version:{' '}
+                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded font-bold">
+                  {prdVersion.version_number}
+                </span>{' '}
+                <span className="text-slate-400 font-normal">({prdVersion.id})</span>
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
             <a
-              href={api.getExportUrl(projectId, 'markdown')}
+              href={api.getExportUrl(projectId, 'markdown', prdVersion?.id)}
               download
               className="p-6 rounded-xl border-2 border-slate-200 hover:border-sky-500 hover:shadow-md transition text-center space-y-3 block bg-slate-50/50"
             >
@@ -958,7 +1176,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
             </a>
 
             <a
-              href={api.getExportUrl(projectId, 'docx')}
+              href={api.getExportUrl(projectId, 'docx', prdVersion?.id)}
               download
               className="p-6 rounded-xl border-2 border-slate-200 hover:border-blue-500 hover:shadow-md transition text-center space-y-3 block bg-slate-50/50"
             >
@@ -975,7 +1193,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
             </a>
 
             <a
-              href={api.getExportUrl(projectId, 'pdf')}
+              href={api.getExportUrl(projectId, 'pdf', prdVersion?.id)}
               download
               className="p-6 rounded-xl border-2 border-slate-200 hover:border-rose-500 hover:shadow-md transition text-center space-y-3 block bg-slate-50/50"
             >

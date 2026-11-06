@@ -37,6 +37,11 @@
 - **JWT Cryptography:** Signed using `PyJWT` with `HS256` and configurable expiration (default 7 days).
 - **Production Guard:** `ALLOW_DEV_AUTO_AUTH` defaults to `False`. When `False`, any request lacking a valid `Authorization: Bearer <token>` header is rejected with HTTP 401 Unauthorized.
 
+### 2.4 Multi-Tenant User Isolation
+- **Project Ownership Enforcement:** All project read, update, submission, and document upload endpoints assert that `project.owner_id == current_user["id"]`, returning HTTP 404 on unauthorized cross-user access attempts.
+- **PRD Document & Version Isolation:** PRD generation, active retrieval, version history, section modification, and approval routes enforce ownership before access.
+- **Export & Validation Guard:** Export endpoints (`/export/{id}/*`) and validation engine endpoints (`/validation/{id}/*`) verify that the calling user owns the project before serving files or executing reports.
+
 ---
 
 ## 3. Automated Security Verification

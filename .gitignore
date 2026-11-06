@@ -30,6 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 frontend/dist/
+frontend/test-results/
+test-results/
+playwright-report/
+docs/playwright-report/
 
 # OS / IDE
 .DS_Store
