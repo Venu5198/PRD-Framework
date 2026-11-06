@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PRDSectionContent } from '../../types';
-import { Search, ChevronRight, X, BookOpen, Layers } from 'lucide-react';
+import { Search, ChevronRight, X, BookOpen, PanelLeftClose } from 'lucide-react';
 
 interface TableOfContentsProps {
   sections: PRDSectionContent[];
@@ -8,6 +8,8 @@ interface TableOfContentsProps {
   onSelectSection: (key: string) => void;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export const TableOfContents: React.FC<TableOfContentsProps> = ({
@@ -16,6 +18,8 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
   onSelectSection,
   isOpenMobile = false,
   onCloseMobile,
+  isCollapsed = false,
+  onToggleCollapse,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -24,8 +28,8 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
   );
 
   const content = (
-    <div className="flex flex-col h-full bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4 shadow-2xs">
-      {/* Header */}
+    <div className="flex flex-col h-full bg-slate-50/80 rounded-2xl border border-slate-200/80 p-3.5 shadow-2xs">
+      {/* Outline Header with Collapse toggle */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-200">
         <div className="flex items-center space-x-2">
           <BookOpen className="w-4 h-4 text-sky-600" />
@@ -34,13 +38,24 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
           </h3>
         </div>
         <div className="flex items-center space-x-1.5">
-          <span className="text-[11px] font-mono px-2 py-0.5 bg-slate-200/80 text-slate-700 rounded-full font-bold">
+          <span className="text-[10px] font-mono px-2 py-0.5 bg-slate-200/80 text-slate-700 rounded-full font-bold">
             {sections.length} Secs
           </span>
+          {onToggleCollapse && (
+            <button
+              onClick={onToggleCollapse}
+              className="hidden lg:inline-flex p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded transition"
+              title="Collapse Outline"
+              aria-label="Collapse Document Outline"
+            >
+              <PanelLeftClose className="w-3.5 h-3.5" />
+            </button>
+          )}
           {onCloseMobile && (
             <button
               onClick={onCloseMobile}
               className="lg:hidden p-1 text-slate-400 hover:text-slate-600 rounded-md"
+              aria-label="Close Mobile Outline"
             >
               <X className="w-4 h-4" />
             </button>
@@ -48,8 +63,8 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
         </div>
       </div>
 
-      {/* Filter / Search input */}
-      <div className="my-3 relative">
+      {/* Filter / Search Input */}
+      <div className="my-2.5 relative">
         <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
         <input
           type="text"
@@ -68,7 +83,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
         )}
       </div>
 
-      {/* Section List */}
+      {/* Scrollable Section List */}
       <div className="flex-1 overflow-y-auto space-y-0.5 pr-1 scrollbar-thin">
         {filteredSections.map((sec) => {
           const isActive = activeSectionKey === sec.key;
@@ -130,15 +145,20 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <nav aria-label="Table of Contents" className="hidden lg:block w-64 xl:w-72 shrink-0 self-start sticky top-20 max-h-[calc(100vh-6rem)] table-of-contents no-print">
-        {content}
-      </nav>
+      {/* Desktop Sidebar (Width 240px when open, hidden when collapsed) */}
+      {!isCollapsed && (
+        <nav
+          aria-label="Table of Contents"
+          className="hidden lg:block w-[240px] xl:w-[260px] shrink-0 self-start sticky top-16 max-h-[calc(100vh-5rem)] table-of-contents no-print"
+        >
+          {content}
+        </nav>
+      )}
 
-      {/* Mobile drawer overlay */}
+      {/* Mobile Drawer (Overlay, slide in from left) */}
       {isOpenMobile && (
         <div className="lg:hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex no-print">
-          <div className="w-80 max-w-[85vw] bg-white h-full p-4 shadow-2xl flex flex-col animate-in slide-in-from-left duration-200">
+          <div className="w-[280px] max-w-[85vw] bg-white h-full p-4 shadow-2xl flex flex-col animate-in slide-in-from-left duration-200">
             {content}
           </div>
           <div className="flex-1" onClick={onCloseMobile} />

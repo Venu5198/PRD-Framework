@@ -374,3 +374,4 @@ class DocumentParser:
             doc.sections.append(sec_node)
 
         return doc
+

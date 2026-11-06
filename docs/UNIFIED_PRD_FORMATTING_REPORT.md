@@ -54,11 +54,14 @@ Renderer      Exporter     Exporter       Exporter
 
 ### 4. Implementation Details by Target Format
 
-#### 4.1. Web PRD Viewer
-- **Desktop (1440px / 1280px):** Three-column layout featuring Left Table of Contents (sticky, section search, active section tracker), Center continuous white technical specification container (max width 920px), and Right Document Information panel (metadata, section count, word count, requirement metrics, SHA-256 hash).
+#### 4.1. Web PRD Viewer & Workspace Layout
+- **Elimination of Constricting 3-Column Layout:** The legacy 3-column layout (Outline + Narrow Center + Permanent Right Info Panel) was eliminated. The reading canvas is now centered, unconstrained, and comfortable.
+- **Collapsible Document Outline (Left, 240–260px):** Sticky section tree with real-time section filtering and active section tracker. Can be collapsed with one click via the top toolbar or the outline header, allowing the central document container to smoothly expand to up to 1000px (`max-w-[960px]`).
+- **On-Demand Document Details Drawer (Right Slide-out):** Replaced the cluttered, permanent right panel with an on-demand slide-out drawer (`DocumentDetailsDrawer`). Contains all essential document identity, lifecycle status, word count, requirement metrics (FR, NFR, AC, BR), and SHA-256 digest with copy-to-clipboard functionality. The reading experience remains 100% distraction-free until technical metadata is requested.
+- **Elimination of Invented Subtitles:** Removed all hardcoded or synthesized subtitle strings; the header strictly renders the canonical title and source metadata.
 - **Tablet (768px):** Centered continuous document container with collapsible Table of Contents accessible via slide-in drawer.
 - **Mobile (390px):** Single-column responsive layout, zero horizontal scrollbar overflow, touch-friendly section navigation drawer.
-- **Dedicated Toolbar:** Sticky toolbar housing Document Title, Version, Lifecycle status pill, direct Markdown/DOCX/PDF export triggers, and native Print (`window.print()`).
+- **Dedicated Toolbar:** Sticky toolbar housing Document Title, Version, Lifecycle status pill, outline collapse toggle, Details drawer trigger, direct Markdown/DOCX/PDF export triggers, and native Print (`window.print()`).
 
 #### 4.2. Markdown Exporter (`export_markdown`)
 - Standardized GitHub/VS Code portable Markdown syntax.
@@ -93,8 +96,8 @@ All four formats were generated using `docs/benchmark/customer_support_prd_v2_3.
 | Output Format | Output File | Size | Metrics | SHA-256 Hash | Status |
 |---|---|---|---|---|---|
 | **Markdown** | `docs/benchmark/unified_v2_3/PRD_Customer_Support_v2_3.md` | 35,409 bytes | 34,963 chars | `d8ee17d5e1d9d92e340a001c727732fb4f86c4e2c3f11efea628f2f6c7227c3a` | **MATCH [PASS]** |
-| **DOCX** | `docs/benchmark/unified_v2_3/PRD_Customer_Support_v2_3.docx` | 47,913 bytes | 6 tables | `e0be3789317c34f0580ba1a2e338d4707a0bd3ca857b21146f9d3f281345633c` | **MATCH [PASS]** |
-| **PDF** | `docs/benchmark/unified_v2_3/PRD_Customer_Support_v2_3.pdf` | 41,843 bytes | 18 pages | `4b5b98a322876309b4e49724cd7d3f652ae0d711f765b4c89b1c0b9a48c2ed6f` | **MATCH [PASS]** |
+| **DOCX** | `docs/benchmark/unified_v2_3/PRD_Customer_Support_v2_3.docx` | 47,913 bytes | 6 tables | `0a1d0747be70f4b593eefc9687c375437cc250d4ab5f18802e27ff098440ecc4` | **MATCH [PASS]** |
+| **PDF** | `docs/benchmark/unified_v2_3/PRD_Customer_Support_v2_3.pdf` | 41,843 bytes | 18 pages | `5e4aa17383e3b348cb3f87519d772b12c92e119d9366631d33a19eed592238f0` | **MATCH [PASS]** |
 | **Web Viewer** | Screen render at port 3000 | 4 viewports | 27 sections | Inspected via Chromium Playwright | **MATCH [PASS]** |
 
 #### Cross-Format Requirement Traceability:
@@ -111,20 +114,28 @@ All four formats were generated using `docs/benchmark/customer_support_prd_v2_3.
 
 Visual inspection was executed using Playwright in headless Chromium against the live container build:
 
-1. **Desktop Viewport (1440 × 900):**
-   - Path: `docs/screenshots/document_viewer_desktop_1440.png` (457,667 bytes)
-   - Verified: Three-column layout (Left: Table of Contents, Center: 920px document container, Right: Document Info Panel).
+1. **Desktop Viewport Expanded (1440 × 900):**
+   - Path: `docs/screenshots/document_viewer_desktop_1440_expanded.png` (360,056 bytes)
+   - Verified: Clean document-first workspace layout with Left Document Outline (240px) and centered white technical specification container (920px). Zero permanent right-side clutter.
 
-2. **Laptop Viewport (1280 × 800):**
-   - Path: `docs/screenshots/document_viewer_laptop_1280.png` (304,352 bytes)
+2. **Desktop Viewport Collapsed (1440 × 900):**
+   - Path: `docs/screenshots/document_viewer_desktop_1440_collapsed.png` (273,624 bytes)
+   - Verified: Document Outline collapsed into a minimal icon rail; central document expands up to 1000px (`max-w-[960px]`) for an immersive reading experience.
+
+3. **Desktop Details Drawer Open (1440 × 900):**
+   - Path: `docs/screenshots/document_viewer_details_drawer.png` (428,357 bytes)
+   - Verified: Slide-out drawer displaying identity, lifecycle status, requirement breakdown, structural word counts, and cryptographic SHA-256 digest with copy-to-clipboard.
+
+4. **Laptop Viewport (1280 × 800):**
+   - Path: `docs/screenshots/document_viewer_laptop_1280.png` (320,312 bytes)
    - Verified: Balanced two-column layout with left Table of Contents and centered document.
 
-3. **Tablet Viewport (768 × 1024):**
-   - Path: `docs/screenshots/document_viewer_tablet_768.png` (249,037 bytes)
+5. **Tablet Viewport (768 × 1024):**
+   - Path: `docs/screenshots/document_viewer_tablet_768.png` (285,321 bytes)
    - Verified: Clean document layout, TOC collapsed into drawer, zero table overflow.
 
-4. **Mobile Viewport (390 × 844):**
-   - Path: `docs/screenshots/document_viewer_mobile_390.png` (118,544 bytes)
+6. **Mobile Viewport (390 × 844):**
+   - Path: `docs/screenshots/document_viewer_mobile_390.png` (125,447 bytes)
    - Verified: Single-column responsive layout, touch-friendly top toolbar, zero horizontal page overflow.
 
 ---
@@ -140,3 +151,4 @@ Visual inspection was executed using Playwright in headless Chromium against the
 | **Frontend Production Build** | `npm --prefix frontend run build` | **0 Errors, 3147 Modules** | `0` | 32.89s |
 | **PRD v2.3 Extraction Audit** | `python scripts/generate_v2_3_unified_exports.py` | **100% Passed** | `0` | 6.80s |
 | **Multi-Format Parity Audit** | `python scripts/verify_export_integrity.py` | **100% Passed** | `0` | 2.90s |
+

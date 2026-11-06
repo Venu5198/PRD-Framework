@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { PRDVersion, PRDSectionContent } from '../../types';
 import { DocumentToolbar } from './DocumentToolbar';
 import { TableOfContents } from './TableOfContents';
-import { DocumentInfoPanel } from './DocumentInfoPanel';
+import { DocumentDetailsDrawer } from './DocumentDetailsDrawer';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { SectionEditorModal } from '../SectionEditorModal';
-import { FileText, CheckCircle2, Edit3, ArrowUp, Hash } from 'lucide-react';
+import { FileText, CheckCircle2, Edit3, ArrowUp, Hash, Info, Calendar } from 'lucide-react';
 
 interface PRDDocumentViewerProps {
   prdVersion: PRDVersion;
   projectTitle: string;
+  targetDomain?: string;
   onBackToOverview: () => void;
   onExport: (format: 'markdown' | 'pdf' | 'docx') => void;
   onSaveSection: (key: string, content: string, isNa: boolean, naRationale?: string) => Promise<void>;
@@ -21,6 +22,7 @@ interface PRDDocumentViewerProps {
 export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
   prdVersion,
   projectTitle,
+  targetDomain,
   onBackToOverview,
   onExport,
   onSaveSection,
@@ -29,7 +31,9 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
   validating = false,
 }) => {
   const [activeSectionKey, setActiveSectionKey] = useState<string>('');
+  const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [mobileTocOpen, setMobileTocOpen] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [editingSection, setEditingSection] = useState<PRDSectionContent | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -51,7 +55,7 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
         .map((s) => ({ key: s.key, el: document.getElementById(`section-${s.key}`) }))
         .filter((item) => item.el !== null);
 
-      const scrollPos = window.scrollY + 180;
+      const scrollPos = window.scrollY + 160;
 
       for (let i = sectionElements.length - 1; i >= 0; i--) {
         const item = sectionElements[i];
@@ -70,7 +74,7 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
     setActiveSectionKey(key);
     const element = document.getElementById(`section-${key}`);
     if (element) {
-      const topOffset = element.getBoundingClientRect().top + window.scrollY - 80;
+      const topOffset = element.getBoundingClientRect().top + window.scrollY - 70;
       window.scrollTo({ top: topOffset, behavior: 'smooth' });
     }
   };
@@ -86,8 +90,8 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
   const isApproved = prdVersion.status?.toLowerCase() === 'approved';
 
   return (
-    <div data-testid="prd-document-viewer" className="min-h-screen bg-slate-100/70 pb-20">
-      {/* 1. Document Toolbar */}
+    <div data-testid="prd-document-viewer" className="min-h-screen bg-slate-100/70 pb-20 text-slate-900">
+      {/* 1. Compact Top Toolbar */}
       <DocumentToolbar
         projectTitle={projectTitle}
         versionNumber={prdVersion.version_number}
@@ -95,31 +99,52 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
         onBackToOverview={onBackToOverview}
         onExport={onExport}
         onPrint={handlePrint}
-        onToggleMobileToc={() => setMobileTocOpen(true)}
+        onToggleNav={() => {
+          if (window.innerWidth < 1024) {
+            setMobileTocOpen(!mobileTocOpen);
+          } else {
+            setIsNavCollapsed(!isNavCollapsed);
+          }
+        }}
+        isNavCollapsed={isNavCollapsed}
+        onOpenDetails={() => setIsDetailsOpen(true)}
         onRunValidation={onRunValidation}
         validating={validating}
       />
 
-      {/* 2. Main Three-Column Layout: Left TOC | Center Document | Right Info Panel */}
-      <div className="max-w-[1520px] mx-auto px-4 sm:px-6 pt-6 flex justify-center gap-6 xl:gap-8">
-        {/* Left: Table of Contents */}
+      {/* 2. Workspace Layout: Collapsible Left Nav + Large Center Document */}
+      <div className="max-w-[1360px] mx-auto px-4 sm:px-6 md:px-8 pt-6 flex justify-center gap-6 xl:gap-8">
+        {/* Left: Collapsible Table of Contents */}
         <TableOfContents
           sections={sectionsList}
           activeSectionKey={activeSectionKey}
           onSelectSection={handleSelectSection}
           isOpenMobile={mobileTocOpen}
           onCloseMobile={() => setMobileTocOpen(false)}
+          isCollapsed={isNavCollapsed}
+          onToggleCollapse={() => setIsNavCollapsed(true)}
         />
 
-        {/* Center: Continuous Document Container */}
-        <main className="flex-1 min-w-0 max-w-[920px]">
-          <article className="document-container bg-white shadow-xl rounded-2xl border border-slate-200/80 px-6 py-10 sm:px-12 sm:py-16 md:px-16 md:py-20 text-slate-800 transition-all">
+        {/* Center: Large Continuous Document Area (850-1000px readable width) */}
+        <main className={`flex-1 min-w-0 transition-all duration-200 ${isNavCollapsed ? 'max-w-[1000px]' : 'max-w-[940px]'}`}>
+          <article className="document-container bg-white shadow-xl rounded-2xl border border-slate-200/90 px-6 py-10 sm:px-12 sm:py-14 md:px-16 md:py-18 text-slate-800 transition-all">
             
-            {/* Document Header & Cover Information */}
-            <header className="border-b border-slate-200 pb-10 mb-12">
-              <div className="flex items-center space-x-2 text-[12px] uppercase tracking-widest text-sky-700 font-bold mb-3">
-                <FileText className="w-4 h-4 text-sky-600" />
-                <span>Product Requirements Document (PRD)</span>
+            {/* Clean Document Cover & Summary */}
+            <header className="border-b border-slate-200 pb-8 mb-10">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <div className="flex items-center space-x-2 text-[11px] sm:text-xs uppercase tracking-widest text-sky-700 font-bold">
+                  <FileText className="w-3.5 h-3.5 text-sky-600" />
+                  <span>Product Requirements Document</span>
+                </div>
+                
+                <button
+                  onClick={() => setIsDetailsOpen(true)}
+                  className="inline-flex items-center space-x-1 text-xs text-slate-500 hover:text-sky-600 font-medium transition"
+                  title="View full document metadata and metrics"
+                >
+                  <Info className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Document Details</span>
+                </button>
               </div>
 
               {/* Document Title: 28-32px bold */}
@@ -127,27 +152,25 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
                 {projectTitle}
               </h1>
 
-              <p className="text-[15px] sm:text-[16px] text-slate-500 mt-2 font-normal">
-                Technical Specification & System Architecture Baseline
-              </p>
-
-              {/* Metadata Grid (12-13px scale) */}
-              <div className="mt-8 pt-6 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-4 text-[12px] sm:text-[13px]">
-                <div>
-                  <span className="text-slate-400 font-medium block">Document Version</span>
-                  <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded text-xs">
+              {/* Compact Document Summary Row */}
+              <div className="mt-6 pt-5 border-t border-slate-100 flex flex-wrap items-center gap-x-6 gap-y-3 text-xs sm:text-[13px] text-slate-600">
+                <div className="flex items-center space-x-2">
+                  <span className="text-slate-400 font-medium">Version:</span>
+                  <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded text-xs">
                     {prdVersion.version_number}
                   </span>
                 </div>
-                <div>
-                  <span className="text-slate-400 font-medium block">Lifecycle Status</span>
-                  <span className={`inline-flex items-center space-x-1 font-bold ${isApproved ? 'text-emerald-700' : 'text-amber-700'}`}>
+
+                <div className="flex items-center space-x-2">
+                  <span className="text-slate-400 font-medium">Status:</span>
+                  <span className={`inline-flex items-center space-x-1 font-semibold ${isApproved ? 'text-emerald-700' : 'text-amber-700'}`}>
                     {isApproved && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
                     <span className="capitalize">{prdVersion.status}</span>
                   </span>
                 </div>
-                <div>
-                  <span className="text-slate-400 font-medium block">Creation Date</span>
+
+                <div className="flex items-center space-x-2">
+                  <span className="text-slate-400 font-medium">Date:</span>
                   <span className="font-medium text-slate-700">
                     {new Date(prdVersion.created_at).toLocaleDateString(undefined, {
                       year: 'numeric',
@@ -156,18 +179,19 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
                     })}
                   </span>
                 </div>
-                <div>
-                  <span className="text-slate-400 font-medium block">Canonical Sections</span>
-                  <span className="font-bold text-slate-800">{sectionsList.length} of 27 Specified</span>
+
+                {targetDomain && (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-slate-400 font-medium">Domain:</span>
+                    <span className="font-medium text-slate-800">{targetDomain}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center space-x-2 sm:ml-auto">
+                  <span className="text-slate-400 font-medium">Scope:</span>
+                  <span className="font-semibold text-slate-700">{sectionsList.length} Canonical Sections</span>
                 </div>
               </div>
-
-              {prdVersion.content_hash && (
-                <div className="mt-4 flex items-center space-x-2 text-[11px] sm:text-[12px] text-slate-500 font-mono">
-                  <Hash className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span className="truncate">Content Hash (SHA-256): {prdVersion.content_hash}</span>
-                </div>
-              )}
             </header>
 
             {/* Continuous Sections Stream */}
@@ -177,7 +201,7 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
                   <section
                     key={sec.key}
                     id={`section-${sec.key}`}
-                    className="scroll-mt-24 group relative"
+                    className="scroll-mt-20 group relative"
                   >
                     {/* Section Header (22-24px bold) */}
                     <div className="flex items-center justify-between pb-2 mb-4 border-b border-slate-200">
@@ -223,24 +247,28 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
             </footer>
           </article>
         </main>
-
-        {/* Right: Document Info Panel (Desktop >= 1440px / 2xl) */}
-        <DocumentInfoPanel
-          prdVersion={prdVersion}
-          projectTitle={projectTitle}
-        />
       </div>
 
       {/* Floating Scroll To Top Button */}
       {showScrollTop && (
         <button
           onClick={scrollToTop}
-          className="fixed bottom-6 right-6 p-3 bg-slate-900 text-white rounded-full shadow-lg hover:bg-slate-800 transition-all z-20 no-print"
+          className="fixed bottom-6 right-6 p-2.5 bg-slate-900 text-white rounded-full shadow-lg hover:bg-slate-800 transition-all z-20 no-print"
           title="Scroll to top"
+          aria-label="Scroll to top"
         >
           <ArrowUp className="w-4 h-4" />
         </button>
       )}
+
+      {/* Collapsible Document Details Drawer */}
+      <DocumentDetailsDrawer
+        isOpen={isDetailsOpen}
+        onClose={() => setIsDetailsOpen(false)}
+        prdVersion={prdVersion}
+        projectTitle={projectTitle}
+        targetDomain={targetDomain}
+      />
 
       {/* Section Editor Modal */}
       {editingSection && (
