@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PRDVersion, PRDSectionContent } from '../../types';
 import { DocumentToolbar } from './DocumentToolbar';
 import { TableOfContents } from './TableOfContents';
+import { DocumentInfoPanel } from './DocumentInfoPanel';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { SectionEditorModal } from '../SectionEditorModal';
-import { FileText, Calendar, Hash, ShieldCheck, CheckCircle2, Edit3, ArrowUp } from 'lucide-react';
+import { FileText, CheckCircle2, Edit3, ArrowUp, Hash } from 'lucide-react';
 
 interface PRDDocumentViewerProps {
   prdVersion: PRDVersion;
@@ -32,7 +33,7 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
   const [editingSection, setEditingSection] = useState<PRDSectionContent | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  const sectionsList = Object.values(prdVersion.sections);
+  const sectionsList = Object.values(prdVersion.sections || {});
 
   // Initialize active section key
   useEffect(() => {
@@ -46,7 +47,6 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
     const handleScroll = () => {
       setShowScrollTop(window.scrollY > 400);
 
-      // Find section currently in view
       const sectionElements = sectionsList
         .map((s) => ({ key: s.key, el: document.getElementById(`section-${s.key}`) }))
         .filter((item) => item.el !== null);
@@ -100,8 +100,8 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
         validating={validating}
       />
 
-      {/* 2. Main Workspace Layout */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8 flex gap-8">
+      {/* 2. Main Three-Column Layout: Left TOC | Center Document | Right Info Panel */}
+      <div className="max-w-[1520px] mx-auto px-4 sm:px-6 pt-6 flex justify-center gap-6 xl:gap-8">
         {/* Left: Table of Contents */}
         <TableOfContents
           sections={sectionsList}
@@ -112,29 +112,32 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
         />
 
         {/* Center: Continuous Document Container */}
-        <main className="flex-1 min-w-0">
-          <article className="document-container bg-white shadow-xl rounded-2xl border border-slate-200/80 max-w-[920px] mx-auto px-6 py-10 sm:px-12 sm:py-16 md:px-16 md:py-20 text-slate-800 transition-all">
+        <main className="flex-1 min-w-0 max-w-[920px]">
+          <article className="document-container bg-white shadow-xl rounded-2xl border border-slate-200/80 px-6 py-10 sm:px-12 sm:py-16 md:px-16 md:py-20 text-slate-800 transition-all">
             
             {/* Document Header & Cover Information */}
             <header className="border-b border-slate-200 pb-10 mb-12">
-              <div className="flex items-center space-x-2 text-xs uppercase tracking-widest text-sky-700 font-bold mb-3">
+              <div className="flex items-center space-x-2 text-[12px] uppercase tracking-widest text-sky-700 font-bold mb-3">
                 <FileText className="w-4 h-4 text-sky-600" />
                 <span>Product Requirements Document (PRD)</span>
               </div>
 
-              <h1 className="text-3xl sm:text-4xl md:text-[42px] font-extrabold text-slate-900 tracking-tight leading-tight">
+              {/* Document Title: 28-32px bold */}
+              <h1 className="text-[28px] sm:text-[32px] font-bold text-slate-900 tracking-tight leading-tight">
                 {projectTitle}
               </h1>
 
-              <p className="text-base sm:text-lg text-slate-500 mt-2 font-normal">
+              <p className="text-[15px] sm:text-[16px] text-slate-500 mt-2 font-normal">
                 Technical Specification & System Architecture Baseline
               </p>
 
-              {/* Metadata Grid */}
-              <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-50/80 border border-slate-200/70 text-xs">
+              {/* Metadata Grid (12-13px scale) */}
+              <div className="mt-8 pt-6 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-4 text-[12px] sm:text-[13px]">
                 <div>
                   <span className="text-slate-400 font-medium block">Document Version</span>
-                  <span className="font-bold text-slate-800 font-mono text-sm">{prdVersion.version_number}</span>
+                  <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded text-xs">
+                    {prdVersion.version_number}
+                  </span>
                 </div>
                 <div>
                   <span className="text-slate-400 font-medium block">Lifecycle Status</span>
@@ -160,7 +163,7 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
               </div>
 
               {prdVersion.content_hash && (
-                <div className="mt-3 flex items-center space-x-2 text-[11px] text-slate-500 font-mono">
+                <div className="mt-4 flex items-center space-x-2 text-[11px] sm:text-[12px] text-slate-500 font-mono">
                   <Hash className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   <span className="truncate">Content Hash (SHA-256): {prdVersion.content_hash}</span>
                 </div>
@@ -169,16 +172,16 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
 
             {/* Continuous Sections Stream */}
             <div className="space-y-12">
-              {sectionsList.map((sec, idx) => {
+              {sectionsList.map((sec) => {
                 return (
                   <section
                     key={sec.key}
                     id={`section-${sec.key}`}
                     className="scroll-mt-24 group relative"
                   >
-                    {/* Section Header with subtle quick edit trigger */}
+                    {/* Section Header (22-24px bold) */}
                     <div className="flex items-center justify-between pb-2 mb-4 border-b border-slate-200">
-                      <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                      <h2 className="text-[22px] sm:text-[24px] font-bold text-slate-900 tracking-tight">
                         {sec.title}
                       </h2>
                       <div className="flex items-center space-x-2">
@@ -200,7 +203,7 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
 
                     {/* Section Content */}
                     {sec.is_na ? (
-                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs sm:text-sm text-slate-500 italic">
+                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs sm:text-[13.5px] text-slate-500 italic">
                         Marked as Not Applicable: {sec.na_rationale || 'Omitted from baseline product scope'}
                       </div>
                     ) : (
@@ -220,6 +223,12 @@ export const PRDDocumentViewer: React.FC<PRDDocumentViewerProps> = ({
             </footer>
           </article>
         </main>
+
+        {/* Right: Document Info Panel (Desktop >= 1440px / 2xl) */}
+        <DocumentInfoPanel
+          prdVersion={prdVersion}
+          projectTitle={projectTitle}
+        />
       </div>
 
       {/* Floating Scroll To Top Button */}

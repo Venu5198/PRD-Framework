@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PRDSectionContent } from '../../types';
-import { Search, ChevronRight, X, List, BookOpen } from 'lucide-react';
+import { Search, ChevronRight, X, BookOpen, Layers } from 'lucide-react';
 
 interface TableOfContentsProps {
   sections: PRDSectionContent[];
@@ -24,7 +24,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
   );
 
   const content = (
-    <div className="flex flex-col h-full bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4">
+    <div className="flex flex-col h-full bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4 shadow-2xs">
       {/* Header */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-200">
         <div className="flex items-center space-x-2">
@@ -72,7 +72,6 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
       <div className="flex-1 overflow-y-auto space-y-0.5 pr-1 scrollbar-thin">
         {filteredSections.map((sec) => {
           const isActive = activeSectionKey === sec.key;
-          // Extract section number and title if formatted like "1. Title"
           const match = sec.title.match(/^(\d+)\.\s*(.*)$/);
           const secNum = match ? match[1] : '';
           const secTitle = match ? match[2] : sec.title;

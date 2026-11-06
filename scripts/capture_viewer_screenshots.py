@@ -13,9 +13,10 @@ async def capture_all_screenshots():
     screenshots_dir.mkdir(parents=True, exist_ok=True)
 
     viewports = [
-        {"name": "desktop", "width": 1280, "height": 800, "filename": "document_viewer_desktop.png"},
-        {"name": "tablet", "width": 768, "height": 1024, "filename": "document_viewer_tablet.png"},
-        {"name": "mobile", "width": 375, "height": 812, "filename": "document_viewer_mobile.png"},
+        {"name": "desktop_1440", "width": 1440, "height": 900, "filename": "document_viewer_desktop_1440.png"},
+        {"name": "laptop_1280", "width": 1280, "height": 800, "filename": "document_viewer_laptop_1280.png"},
+        {"name": "tablet_768", "width": 768, "height": 1024, "filename": "document_viewer_tablet_768.png"},
+        {"name": "mobile_390", "width": 390, "height": 844, "filename": "document_viewer_mobile_390.png"},
     ]
 
     async with async_playwright() as p:
@@ -64,20 +65,23 @@ async def capture_all_screenshots():
             await page.wait_for_timeout(2000)
 
             # 6. Viewport specific interactions
-            if vp["name"] == "desktop":
+            if vp["name"] == "desktop_1440":
+                print("  Desktop 1440px: Verifying three-column layout (TOC + Document + Info Panel)...")
                 toc_item = page.locator('button:has-text("Functional Requirements")').first
                 if await toc_item.is_visible():
-                    print("  Testing desktop TOC click...")
                     await toc_item.click()
                     await page.wait_for_timeout(800)
-            elif vp["name"] == "tablet":
-                print("  Tablet view: verifying continuous document reading layout...")
-                # Scroll to display tables & criteria
-                await page.evaluate("window.scrollTo(0, 300)")
+            elif vp["name"] == "laptop_1280":
+                print("  Laptop 1280px: Verifying centered document and left TOC...")
+                await page.evaluate("window.scrollTo(0, 180)")
                 await page.wait_for_timeout(500)
-            elif vp["name"] == "mobile":
-                print("  Mobile view: checking responsive toolbar and document layout...")
-                await page.evaluate("window.scrollTo(0, 200)")
+            elif vp["name"] == "tablet_768":
+                print("  Tablet 768px: Verifying continuous document reading layout...")
+                await page.evaluate("window.scrollTo(0, 260)")
+                await page.wait_for_timeout(500)
+            elif vp["name"] == "mobile_390":
+                print("  Mobile 390px: Checking responsive single-column layout...")
+                await page.evaluate("window.scrollTo(0, 160)")
                 await page.wait_for_timeout(500)
 
             out_path = screenshots_dir / vp["filename"]
@@ -87,7 +91,7 @@ async def capture_all_screenshots():
             await context.close()
 
         await browser.close()
-    print("\nAll viewport screenshots captured successfully!")
+    print("\nAll 4 viewport screenshots captured successfully!")
 
 if __name__ == "__main__":
     asyncio.run(capture_all_screenshots())
