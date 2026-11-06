@@ -229,24 +229,51 @@ Install the following:
 
 ```text
 PRD-Framework/
+├── README.md
+├── LICENSE
+├── .gitignore
+├── .env.example
+├── docker-compose.yml
+├── pytest.ini
 │
 ├── backend/
 │   ├── app/
 │   ├── tests/
 │   ├── requirements.txt
-│   └── ...
+│   └── Dockerfile
 │
 ├── frontend/
 │   ├── src/
+│   ├── public/
 │   ├── package.json
-│   └── ...
+│   ├── package-lock.json
+│   └── Dockerfile
 │
 ├── docs/
-│   └── screenshots/
+│   ├── architecture/
+│   │   ├── ARCHITECTURE.md
+│   │   ├── HLD.md
+│   │   ├── LLD.md
+│   │   ├── ASYNC_JOB_ARCHITECTURE.md
+│   │   └── PRD_ENGINEERING_V2_DATA_FLOW.md
+│   ├── user-guide/
+│   │   └── PRD.md
+│   ├── development/
+│   │   ├── SECURITY.md
+│   │   ├── TEST_STRATEGY.md
+│   │   ├── PDF_FORMATTING_REPAIR_REPORT.md
+│   │   └── UNIFIED_PRD_FORMATTING_REPORT.md
+│   ├── screenshots/
+│   │   └── 01-dashboard.png ... 09-document-export.png
+│   ├── examples/
+│   │   └── customer_support_prd_example.md
+│   └── archive/phase-reports/
+│       └── [historical phase reports & milestone validation artifacts]
 │
-├── docker-compose.yml
-├── README.md
-└── ...
+├── scripts/
+└── tests/
+    └── fixtures/
+        └── historical-prds/
 ```
 
 The exact repository structure may contain additional directories and configuration files.

@@ -41,7 +41,11 @@ async def get_or_create_project_with_prd():
         print(f"Using existing project with PRD: {project_id}")
     else:
         # Load PRD markdown and parse
-        md_path = Path(__file__).resolve().parent.parent / "PRD_Customer_Support_v2_4_6.md"
+        md_path = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "historical-prds" / "PRD_Customer_Support_v2_4_6.md"
+        if not md_path.exists():
+            md_path = Path(__file__).resolve().parent.parent / "docs" / "examples" / "customer_support_prd_example.md"
+        if not md_path.exists():
+            md_path = Path(__file__).resolve().parent.parent / "PRD_Customer_Support_v2_4_6.md"
         sections = {}
         if md_path.exists():
             content = md_path.read_text(encoding="utf-8")

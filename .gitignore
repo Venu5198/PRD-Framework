@@ -48,3 +48,10 @@ backend/data/uploads/*
 backend/data/exports/*
 !backend/data/exports/.gitkeep
 
+
+# Generated document exports & local data
+exports/
+data/reports/*
+!data/reports/.gitkeep
+data/uploads/*
+!data/uploads/.gitkeep

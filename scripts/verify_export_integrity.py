@@ -41,10 +41,24 @@ def extract_text_from_pdf(path: Path) -> str:
 
 def verify_exports():
     root = Path(__file__).resolve().parent.parent
-    md_path = root / "PRD_Customer_Support_v2_4_6.md"
-    docx_path = root / "PRD_Customer_Support_v2_4_6.docx"
-    pdf_path = root / "PRD_Customer_Support_v2_4_6.pdf"
-    manifest_path = root / "artifacts_manifest.json"
+    fixtures_dir = root / "tests" / "fixtures" / "historical-prds"
+    archive_dir = root / "docs" / "archive" / "phase-reports"
+
+    md_path = fixtures_dir / "PRD_Customer_Support_v2_4_6.md"
+    if not md_path.exists():
+        md_path = root / "PRD_Customer_Support_v2_4_6.md"
+
+    docx_path = archive_dir / "PRD_Customer_Support_v2_4_6.docx"
+    if not docx_path.exists():
+        docx_path = root / "PRD_Customer_Support_v2_4_6.docx"
+
+    pdf_path = archive_dir / "PRD_Customer_Support_v2_4_6.pdf"
+    if not pdf_path.exists():
+        pdf_path = root / "PRD_Customer_Support_v2_4_6.pdf"
+
+    manifest_path = archive_dir / "artifacts_manifest_v2.4.6.json"
+    if not manifest_path.exists():
+        manifest_path = root / "artifacts_manifest.json"
 
     print("================================================================")
     print("PHASE 2.4.6 MULTI-FORMAT EXPORT INTEGRITY & EXTRACTION AUDIT")
