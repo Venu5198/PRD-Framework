@@ -30,6 +30,7 @@ import {
   Square,
   Loader2
 } from 'lucide-react';
+import { PRDDocumentViewer } from '../components/document/PRDDocumentViewer';
 
 interface ProjectViewProps {
   projectId: string;
@@ -314,6 +315,16 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
     } catch (err: any) {
       setErrorMessage(err.message);
     }
+  };
+
+  const handleExport = (format: 'markdown' | 'docx' | 'pdf') => {
+    const url = api.getExportUrl(projectId, format, prdVersion?.id);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   if (!project) {
@@ -880,80 +891,16 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ projectId, onBack }) =
               </div>
             )
           ) : (
-            <div className="space-y-6">
-              {/* Document Banner */}
-              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <h2 className="text-lg font-bold text-slate-900">Canonical 27-Section PRD Specification</h2>
-                    <span className="text-xs bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-mono font-bold">
-                      {prdVersion.version_number}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Changelog: {prdVersion.changelog} | Created {new Date(prdVersion.created_at).toLocaleString()}
-                  </p>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => handleValidatePRD()}
-                    disabled={validating}
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${validating ? 'animate-spin' : ''}`} />
-                    <span>Run Validation</span>
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('export')}
-                    className="inline-flex items-center space-x-1.5 px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition shadow-sm"
-                  >
-                    <Download className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Export Document</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Sections Accordion / Cards */}
-              <div className="space-y-4">
-                {Object.values(prdVersion.sections).map((sec) => (
-                  <div
-                    key={sec.key}
-                    className="bg-white rounded-xl border border-slate-200 shadow-sm hover:border-slate-300 transition overflow-hidden"
-                  >
-                    <div className="flex items-center justify-between px-6 py-4 bg-slate-50/70 border-b border-slate-100">
-                      <div className="flex items-center space-x-3">
-                        <span className="font-bold text-sm text-slate-900">{sec.title}</span>
-                        {sec.is_na && (
-                          <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-bold uppercase">
-                            Not Applicable
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => setEditingSection(sec)}
-                        className="inline-flex items-center space-x-1 text-xs font-semibold text-sky-600 hover:text-sky-800 hover:bg-sky-50 px-2.5 py-1 rounded-md transition"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        <span>Edit / Regenerate</span>
-                      </button>
-                    </div>
-
-                    <div className="p-6">
-                      {sec.is_na ? (
-                        <p className="text-xs text-slate-400 italic">
-                          Marked as Not Applicable: {sec.na_rationale || 'Omitted from scope'}
-                        </p>
-                      ) : (
-                        <div className="prose prose-sm max-w-none text-slate-800 text-xs leading-relaxed whitespace-pre-wrap font-sans">
-                          {sec.content}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <PRDDocumentViewer
+              prdVersion={prdVersion}
+              projectTitle={project?.title || 'Product Requirements Document'}
+              onBackToOverview={() => setActiveTab('input')}
+              onExport={handleExport}
+              onSaveSection={handleSaveSection}
+              onRegenerateSection={handleRegenerateSection}
+              onRunValidation={handleValidatePRD}
+              validating={validating}
+            />
           )}
         </div>
       )}

@@ -49,166 +49,344 @@ class ExportService:
         return filepath
 
     def export_docx(self, prd_version: PRDVersion, project_title: str) -> Path:
-        """Export PRD version to Microsoft Word DOCX."""
+        """Export PRD version to Microsoft Word DOCX with professional typography and formatting."""
         from docx import Document
         from docx.shared import Inches, Pt, RGBColor
         from docx.enum.text import WD_ALIGN_PARAGRAPH
-        from docx.enum.table import WD_TABLE_ALIGNMENT
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
 
         filename = f"PRD_{prd_version.project_id[:8]}_{prd_version.version_number}.docx"
         filepath = self.exports_dir / filename
 
         doc = Document()
 
-        # Document Header
+        # Set 1-inch margins & running headers/footers
+        for section in doc.sections:
+            section.top_margin = Inches(1)
+            section.bottom_margin = Inches(1)
+            section.left_margin = Inches(1)
+            section.right_margin = Inches(1)
+
+            # Header
+            header_p = section.header.paragraphs[0]
+            header_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            hrun = header_p.add_run(f"Product Requirements Document | {project_title}")
+            hrun.font.size = Pt(8.5)
+            hrun.font.color.rgb = RGBColor(100, 116, 139)
+
+            # Footer
+            footer_p = section.footer.paragraphs[0]
+            footer_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            frun = footer_p.add_run(f"Version {prd_version.version_number} | {prd_version.status.upper()}")
+            frun.font.size = Pt(8.5)
+            frun.font.color.rgb = RGBColor(100, 116, 139)
+
+        # Document Title Block
         title_p = doc.add_paragraph()
-        title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        title_run = title_p.add_run(f"Product Requirements Document\n{project_title}")
-        title_run.font.size = Pt(22)
+        title_p.paragraph_format.space_before = Pt(8)
+        title_p.paragraph_format.space_after = Pt(2)
+        title_run = title_p.add_run("Product Requirements Document")
+        title_run.font.size = Pt(13)
         title_run.font.bold = True
-        title_run.font.color.rgb = RGBColor(30, 58, 138)
+        title_run.font.color.rgb = RGBColor(14, 165, 233)
+
+        sub_p = doc.add_paragraph()
+        sub_p.paragraph_format.space_after = Pt(8)
+        sub_run = sub_p.add_run(project_title)
+        sub_run.font.size = Pt(22)
+        sub_run.font.bold = True
+        sub_run.font.color.rgb = RGBColor(15, 23, 42)
 
         meta_p = doc.add_paragraph()
-        meta_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        meta_p.paragraph_format.space_after = Pt(18)
         meta_run = meta_p.add_run(
-            f"Version: {prd_version.version_number}  |  Status: {prd_version.status.upper()}  |  Date: {prd_version.created_at.strftime('%Y-%m-%d')}"
+            f"Version: {prd_version.version_number}   |   Status: {prd_version.status.upper()}   |   Date: {prd_version.created_at.strftime('%Y-%m-%d')}"
         )
-        meta_run.font.size = Pt(10)
-        meta_run.font.italic = True
-        doc.add_paragraph()
+        meta_run.font.size = Pt(9.5)
+        meta_run.font.color.rgb = RGBColor(71, 85, 105)
 
         # Sections
         for sec_key in CANONICAL_SECTIONS:
             sec = prd_version.sections.get(sec_key)
             title = SECTION_TITLES.get(sec_key, sec_key)
             h = doc.add_heading(title, level=1)
-            h.style.font.color.rgb = RGBColor(17, 24, 39)
+            h.paragraph_format.space_before = Pt(16)
+            h.paragraph_format.space_after = Pt(6)
+            h.paragraph_format.keep_with_next = True
+            for r in h.runs:
+                r.font.size = Pt(14)
+                r.font.bold = True
+                r.font.color.rgb = RGBColor(15, 23, 42)
 
             if sec and sec.is_na:
                 p = doc.add_paragraph()
                 p.italic = True
-                p.add_run(f"[Not Applicable: {sec.na_rationale or 'Out of current scope'}]")
+                r = p.add_run(f"[Not Applicable: {sec.na_rationale or 'Out of current scope'}]")
+                r.font.color.rgb = RGBColor(100, 116, 139)
+                r.font.size = Pt(9.5)
             elif sec and sec.content:
-                content = sec.content
-                # Check if section content has markdown table
-                if "|" in content and "-|-" in content:
-                    self._render_markdown_table_in_docx(doc, content)
-                else:
-                    doc.add_paragraph(content)
+                self._render_markdown_in_docx(doc, sec.content)
             else:
-                doc.add_paragraph("Content pending generation.")
+                p = doc.add_paragraph("Content pending generation.")
+                p.italic = True
 
         doc.save(str(filepath))
         return filepath
 
-    def _render_markdown_table_in_docx(self, doc, content: str):
+    def _render_markdown_in_docx(self, doc, content: str):
+        from docx.shared import Pt, RGBColor
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
+
         lines = content.strip().split("\n")
-        table_lines = [l for l in lines if l.strip().startswith("|") and l.strip().endswith("|")]
-        non_table_before = []
-        is_table = False
+        idx = 0
+        while idx < lines.length if hasattr(lines, 'length') else idx < len(lines):
+            line = lines[idx]
+            trimmed = line.strip()
 
-        for l in lines:
-            if l.strip().startswith("|") and l.strip().endswith("|"):
-                is_table = True
-            elif not is_table:
-                non_table_before.append(l)
+            # Table block
+            if trimmed.startswith("|") and trimmed.endswith("|"):
+                table_lines = []
+                while idx < len(lines) and lines[idx].strip().startswith("|") and lines[idx].strip().endswith("|"):
+                    table_lines.append(lines[idx].strip())
+                    idx += 1
 
-        if non_table_before:
-            doc.add_paragraph("\n".join(non_table_before))
+                if len(table_lines) >= 2:
+                    header_row = [c.strip().replace("**", "") for c in table_lines[0].split("|")[1:-1]]
+                    data_rows = []
+                    for row_line in table_lines[2:]:
+                        cells = [c.strip().replace("**", "") for c in row_line.split("|")[1:-1]]
+                        data_rows.append(cells)
 
-        if len(table_lines) >= 2:
-            header_row = [c.strip().replace("**", "") for c in table_lines[0].split("|")[1:-1]]
-            data_rows = []
-            for row_line in table_lines[2:]:  # skip divider
-                cells = [c.strip().replace("**", "") for c in row_line.split("|")[1:-1]]
-                data_rows.append(cells)
+                    docx_table = doc.add_table(rows=1, cols=len(header_row))
+                    docx_table.style = 'Table Grid'
+                    
+                    hdr_row = docx_table.rows[0]
+                    for c_idx, text in enumerate(header_row):
+                        cell = hdr_row.cells[c_idx]
+                        shading = parse_xml(f'<w:shd {nsdecls("w")} w:fill="0F172A"/>')
+                        cell._tc.get_or_add_tcPr().append(shading)
+                        p = cell.paragraphs[0]
+                        p.paragraph_format.space_before = Pt(3)
+                        p.paragraph_format.space_after = Pt(3)
+                        r = p.add_run(text)
+                        r.font.bold = True
+                        r.font.size = Pt(8.5)
+                        r.font.color.rgb = RGBColor(255, 255, 255)
 
-            docx_table = doc.add_table(rows=1, cols=len(header_row))
-            docx_table.style = 'Light Shading Accent 1'
-            hdr_cells = docx_table.rows[0].cells
-            for idx, text in enumerate(header_row):
-                hdr_cells[idx].text = text
+                    for r_idx, row_data in enumerate(data_rows):
+                        row = docx_table.add_row()
+                        bg_color = "F8FAFC" if r_idx % 2 == 1 else "FFFFFF"
+                        for c_idx, cell_val in enumerate(row_data[:len(header_row)]):
+                            cell = row.cells[c_idx]
+                            if bg_color != "FFFFFF":
+                                shading = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{bg_color}"/>')
+                                cell._tc.get_or_add_tcPr().append(shading)
+                            p = cell.paragraphs[0]
+                            p.paragraph_format.space_before = Pt(2.5)
+                            p.paragraph_format.space_after = Pt(2.5)
+                            r = p.add_run(cell_val)
+                            r.font.size = Pt(8.5)
+                            r.font.color.rgb = RGBColor(30, 41, 59)
+                continue
 
-            for row_data in data_rows:
-                row_cells = docx_table.add_row().cells
-                for idx, cell_val in enumerate(row_data[:len(header_row)]):
-                    row_cells[idx].text = cell_val
-        else:
-            doc.add_paragraph(content)
+            # Headings
+            if trimmed.startswith("#### "):
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(8)
+                p.paragraph_format.space_after = Pt(2)
+                p.paragraph_format.keep_with_next = True
+                r = p.add_run(trimmed[5:])
+                r.font.bold = True
+                r.font.size = Pt(10.5)
+                idx += 1
+                continue
+            elif trimmed.startswith("### "):
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(10)
+                p.paragraph_format.space_after = Pt(3)
+                p.paragraph_format.keep_with_next = True
+                r = p.add_run(trimmed[4:])
+                r.font.bold = True
+                r.font.size = Pt(11.5)
+                idx += 1
+                continue
+            elif trimmed.startswith("## "):
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(12)
+                p.paragraph_format.space_after = Pt(4)
+                p.paragraph_format.keep_with_next = True
+                r = p.add_run(trimmed[3:])
+                r.font.bold = True
+                r.font.size = Pt(12.5)
+                idx += 1
+                continue
+
+            # Bullet points
+            if trimmed.startswith("- ") or trimmed.startswith("* "):
+                p = doc.add_paragraph(style='List Bullet')
+                p.paragraph_format.space_after = Pt(2)
+                clean_t = trimmed[2:].replace("**", "")
+                p.add_run(clean_t)
+                idx += 1
+                continue
+
+            # Standard paragraph
+            if trimmed:
+                p = doc.add_paragraph()
+                p.paragraph_format.space_after = Pt(4)
+                p.add_run(trimmed)
+
+            idx += 1
+
+    def _render_markdown_table_in_docx(self, doc, content: str):
+        self._render_markdown_in_docx(doc, content)
 
     def export_pdf(self, prd_version: PRDVersion, project_title: str) -> Path:
-        """Export PRD version to PDF using ReportLab."""
+        """Export PRD version to PDF using ReportLab with professional layout and NumberedCanvas."""
         from reportlab.lib.pagesizes import letter
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib import colors
+        from reportlab.pdfgen import canvas
 
         filename = f"PRD_{prd_version.project_id[:8]}_{prd_version.version_number}.pdf"
         filepath = self.exports_dir / filename
+
+        class NumberedCanvas(canvas.Canvas):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._saved_page_states = []
+
+            def showPage(self):
+                self._saved_page_states.append(dict(self.__dict__))
+                self._startPage()
+
+            def save(self):
+                num_pages = len(self._saved_page_states)
+                for state in self._saved_page_states:
+                    self.__dict__.update(state)
+                    self.draw_page_decorations(num_pages)
+                    canvas.Canvas.showPage(self)
+                canvas.Canvas.save(self)
+
+            def draw_page_decorations(self, page_count):
+                self.saveState()
+                self.setFont("Helvetica", 8)
+                self.setFillColor(colors.HexColor("#64748b"))
+
+                # Header on pages after first
+                if self._pageNumber > 1:
+                    self.drawString(40, 755, f"Product Requirements Document — {project_title}")
+                    self.setStrokeColor(colors.HexColor("#e2e8f0"))
+                    self.setLineWidth(0.5)
+                    self.line(40, 747, 572, 747)
+
+                # Running Footer
+                self.setStrokeColor(colors.HexColor("#e2e8f0"))
+                self.setLineWidth(0.5)
+                self.line(40, 42, 572, 42)
+                self.drawString(40, 30, f"Version {prd_version.version_number} | {prd_version.status.upper()}")
+                self.drawRightString(572, 30, f"Page {self._pageNumber} of {page_count}")
+                self.restoreState()
 
         doc = SimpleDocTemplate(
             str(filepath),
             pagesize=letter,
             rightMargin=40,
             leftMargin=40,
-            topMargin=40,
-            bottomMargin=40
+            topMargin=46,
+            bottomMargin=46
         )
         styles = getSampleStyleSheet()
 
         title_style = ParagraphStyle(
             'DocTitle',
             parent=styles['Heading1'],
-            fontSize=20,
-            leading=24,
-            textColor=colors.HexColor("#1e3a8a"),
-            alignment=1,
-            spaceAfter=12
+            fontSize=22,
+            leading=26,
+            textColor=colors.HexColor("#0f172a"),
+            alignment=0,
+            spaceAfter=4
+        )
+        sub_style = ParagraphStyle(
+            'DocSub',
+            parent=styles['Normal'],
+            fontSize=11,
+            leading=14,
+            textColor=colors.HexColor("#0284c7"),
+            spaceAfter=10
         )
         meta_style = ParagraphStyle(
             'DocMeta',
             parent=styles['Normal'],
-            fontSize=9,
+            fontSize=8.5,
             leading=12,
-            textColor=colors.HexColor("#4b5563"),
-            alignment=1,
-            spaceAfter=20
+            textColor=colors.HexColor("#475569"),
+            spaceAfter=18
         )
         h1_style = ParagraphStyle(
             'SectionH1',
             parent=styles['Heading2'],
             fontSize=13,
             leading=16,
-            textColor=colors.HexColor("#111827"),
+            textColor=colors.HexColor("#0f172a"),
             spaceBefore=14,
             spaceAfter=6,
+            keepWithNext=True
+        )
+        h2_style = ParagraphStyle(
+            'SectionH2',
+            parent=styles['Heading3'],
+            fontSize=10.5,
+            leading=13,
+            textColor=colors.HexColor("#1e293b"),
+            spaceBefore=10,
+            spaceAfter=4,
             keepWithNext=True
         )
         body_style = ParagraphStyle(
             'Body',
             parent=styles['Normal'],
-            fontSize=9,
-            leading=13,
-            textColor=colors.HexColor("#1f2937"),
-            spaceAfter=8
+            fontSize=8.5,
+            leading=12,
+            textColor=colors.HexColor("#1e293b"),
+            spaceAfter=6
+        )
+        table_cell_style = ParagraphStyle(
+            'TableCell',
+            parent=styles['Normal'],
+            fontSize=7.5,
+            leading=10,
+            textColor=colors.HexColor("#1e293b")
+        )
+        table_hdr_style = ParagraphStyle(
+            'TableHdr',
+            parent=styles['Normal'],
+            fontSize=7.5,
+            leading=10,
+            fontName="Helvetica-Bold",
+            textColor=colors.white
         )
         na_style = ParagraphStyle(
             'NA',
             parent=body_style,
             fontName="Helvetica-Oblique",
-            textColor=colors.HexColor("#6b7280")
+            textColor=colors.HexColor("#64748b")
         )
 
-        pdf_meta = f"Version {prd_version.version_number} &nbsp;|&nbsp; Status: {prd_version.status.upper()} &nbsp;|&nbsp; Date: {prd_version.created_at.strftime('%Y-%m-%d')}"
+        pdf_meta = f"<b>Version:</b> {prd_version.version_number} &nbsp;|&nbsp; <b>Status:</b> {prd_version.status.upper()} &nbsp;|&nbsp; <b>Date:</b> {prd_version.created_at.strftime('%Y-%m-%d')}"
         if prd_version.job_id:
-            pdf_meta += f" &nbsp;|&nbsp; Job ID: {prd_version.job_id[:8]}"
+            pdf_meta += f" &nbsp;|&nbsp; <b>Job ID:</b> {prd_version.job_id[:8]}"
         if prd_version.content_hash:
-            pdf_meta += f" &nbsp;|&nbsp; SHA-256: {prd_version.content_hash[:12]}..."
+            pdf_meta += f" &nbsp;|&nbsp; <b>SHA-256:</b> {prd_version.content_hash[:12]}..."
 
         elements = [
-            Paragraph(f"Product Requirements Document<br/>{project_title}", title_style),
+            Paragraph("Product Requirements Document", sub_style),
+            Paragraph(project_title, title_style),
             Paragraph(pdf_meta, meta_style),
-            Spacer(1, 10)
+            Spacer(1, 8)
         ]
 
         for sec_key in CANONICAL_SECTIONS:
@@ -219,18 +397,75 @@ class ExportService:
             if sec and sec.is_na:
                 elements.append(Paragraph(f"[Not Applicable: {sec.na_rationale or 'Excluded'}]", na_style))
             elif sec and sec.content:
-                # Clean simple text paragraphs
-                text_clean = sec.content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                # Handle basic newlines
-                paras = text_clean.split("\n\n")
-                for p_text in paras:
-                    if p_text.strip():
-                        elements.append(Paragraph(p_text.replace("\n", "<br/>"), body_style))
+                lines = sec.content.strip().split("\n")
+                idx = 0
+                while idx < len(lines):
+                    line = lines[idx]
+                    trimmed = line.strip()
+
+                    # Markdown table detection
+                    if trimmed.startswith("|") and trimmed.endswith("|"):
+                        t_lines = []
+                        while idx < len(lines) and lines[idx].strip().startswith("|") and lines[idx].strip().endswith("|"):
+                            t_lines.append(lines[idx].strip())
+                            idx += 1
+
+                        if len(t_lines) >= 2:
+                            raw_headers = [c.strip().replace("**", "") for c in t_lines[0].split("|")[1:-1]]
+                            num_cols = len(raw_headers)
+                            if num_cols > 0:
+                                table_data = []
+                                # Header
+                                table_data.append([Paragraph(h, table_hdr_style) for h in raw_headers])
+                                # Data rows
+                                for r_line in t_lines[2:]:
+                                    cells = [c.strip().replace("**", "") for c in r_line.split("|")[1:-1]]
+                                    # Pad or trim
+                                    cells = (cells + [""] * num_cols)[:num_cols]
+                                    table_data.append([Paragraph(c.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), table_cell_style) for c in cells])
+
+                                available_width = 532.0  # letter width 612 - 80 margin
+                                col_w = available_width / num_cols
+                                pdf_table = Table(table_data, colWidths=[col_w] * num_cols)
+                                t_style = [
+                                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+                                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                                    ('TOPPADDING', (0, 0), (-1, -1), 3),
+                                    ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                                    ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                                    ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                                ]
+                                for row_i in range(1, len(table_data)):
+                                    if row_i % 2 == 0:
+                                        t_style.append(('BACKGROUND', (0, row_i), (-1, row_i), colors.HexColor("#f8fafc")))
+                                pdf_table.setStyle(TableStyle(t_style))
+                                elements.append(Spacer(1, 4))
+                                elements.append(pdf_table)
+                                elements.append(Spacer(1, 4))
+                        continue
+
+                    # Subheadings
+                    if trimmed.startswith("### ") or trimmed.startswith("#### "):
+                        sub_text = trimmed.lstrip("#").strip()
+                        elements.append(Paragraph(sub_text, h2_style))
+                        idx += 1
+                        continue
+
+                    # Regular text paragraph
+                    if trimmed:
+                        clean_text = trimmed.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                        clean_text = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", clean_text)
+                        clean_text = re.sub(r"`([^`]+)`", r"<font face='Courier'>\1</font>", clean_text)
+                        elements.append(Paragraph(clean_text, body_style))
+
+                    idx += 1
             else:
                 elements.append(Paragraph("Content not specified.", na_style))
 
             elements.append(Spacer(1, 6))
 
-        doc.build(elements)
+        doc.build(elements, canvasmaker=NumberedCanvas)
         return filepath
 

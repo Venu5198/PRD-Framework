@@ -92,6 +92,8 @@ export interface PRDVersion {
   status: 'draft' | 'approved' | 'archived';
   sections: Record<string, PRDSectionContent>;
   changelog: string;
+  content_hash?: string;
+  job_id?: string;
   created_at: string;
   created_by: string;
 }
