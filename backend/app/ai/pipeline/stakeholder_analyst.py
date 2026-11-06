@@ -56,7 +56,9 @@ Instructions:
    - human agent editing or policy compliance checks,
    - manager sign-off, approvals, or managerial review dashboards,
    - live-agent fallback routing or telephony/voice channels,
-   - external CRM / third-party ticketing platforms.
+   - external CRM / third-party ticketing platforms,
+   - billing disputes, invoices, payment refunds, or financial transactions (unless explicitly mandated in core capabilities),
+   - queue-full rejection, satisfaction surveys, or wait-time countdown timers.
    Keep user journeys focused strictly on the primary user interaction with the system and straightforward escalation queuing when low confidence occurs.
 
 Return ONLY a valid JSON object matching this schema:
@@ -146,7 +148,11 @@ class StakeholderAnalyst:
                         val = re.sub(r"\b(?:daily dashboard for ai accuracy rates|daily dashboard for ai|dashboard for ai accuracy|daily dashboard)\b", "internal queue triage view", val, flags=re.IGNORECASE)
                         val = re.sub(r"\b(?:confirms ticket creation|ticket creation|generates a ticket ID|ticket ID|queued ticket|opens the queued ticket|marks the ticket as resolved|close tickets|resolves tickets|ticket generation|escalation ticket|a ticket|the ticket)\b", "escalation queue entry", val, flags=re.IGNORECASE)
                         val = re.sub(r"\b(?:support manager|customer support manager)\b", "Support Representative", val, flags=re.IGNORECASE)
-                        val = re.sub(r"\b(?:expected wait time|estimated wait time|informs the customer of an expected wait time|informs the user of the expected wait time)\b", "informs the user that the inquiry is queued for representative review", val, flags=re.IGNORECASE)
+                        val = re.sub(r"\b(?:expected wait time|estimated wait time|informs the customer of an expected wait time|informs the user of the expected wait time|wait time estimate|wait-time)\b", "informs the user that the inquiry is queued for representative review", val, flags=re.IGNORECASE)
+                        val = re.sub(r"\b(?:billing discrepancy|billing dispute|invoice dispute|billing refund|disputes a billing charge|submits a billing inquiry|billing issue)\b", "complex knowledge-base query", val, flags=re.IGNORECASE)
+                        val = re.sub(r"\b(?:queue is full|when the queue is full|escalation queue is full)\b", "inquiry queue is busy", val, flags=re.IGNORECASE)
+                        val = re.sub(r"\b(?:final satisfaction feedback|satisfaction feedback|satisfaction survey)\b", "completes the session", val, flags=re.IGNORECASE)
+                        val = re.sub(r"\b(?:marks the interaction as resolved|marks the ticket as resolved)\b", "records interaction outcome in audit history", val, flags=re.IGNORECASE)
                         step_dict[field] = val
                 clean_journeys.append(UserJourneyStep(**step_dict))
             journeys = clean_journeys

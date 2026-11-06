@@ -2,6 +2,7 @@ import asyncio
 import httpx
 import json
 import logging
+import re
 import time
 from typing import Optional, Dict, Any, List
 from app.ai.gateway import AIGatewayInterface
@@ -121,7 +122,7 @@ class GroqAdapter(AIGatewayInterface):
 
         headers = self._get_headers()
         max_retries = 3
-        backoff_delays = [1.0, 2.0, 4.0]
+        backoff_delays = [6.0, 15.0, 30.0]
 
         for attempt in range(max_retries):
             start_time = time.perf_counter()
@@ -145,7 +146,19 @@ class GroqAdapter(AIGatewayInterface):
                     # Handle Rate Limiting (429)
                     if res.status_code == 429:
                         retry_after_str = res.headers.get("Retry-After")
-                        retry_after = float(retry_after_str) if retry_after_str else backoff_delays[min(attempt, len(backoff_delays)-1)]
+                        if retry_after_str:
+                            try:
+                                retry_after = float(retry_after_str)
+                            except ValueError:
+                                retry_after = backoff_delays[min(attempt, len(backoff_delays)-1)]
+                        else:
+                            # Try parsing Groq's error message or rate limit headers
+                            reset_match = re.search(r"try again in ([\d\.]+)s", getattr(res, "text", "") or "", re.IGNORECASE)
+                            if reset_match:
+                                retry_after = float(reset_match.group(1)) + 1.0
+                            else:
+                                retry_after = backoff_delays[min(attempt, len(backoff_delays)-1)]
+
                         logger.warning(
                             f"[GroqAdapter] Rate limited (attempt {attempt+1}/{max_retries}): "
                             f"HTTP 429, waiting {retry_after:.1f}s (provider=groq, model={target_model})"

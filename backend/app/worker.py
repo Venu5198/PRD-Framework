@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import socket
 import uuid
 import signal
@@ -133,12 +134,30 @@ class BackgroundWorker:
                 on_progress=on_progress,
                 check_cancelled=check_cancelled,
                 job_id=job_id,
-                requested_version=job.get("version_number") or "v2.4.4"
+                requested_version=job.get("version_number") or "v2.4.5"
             )
 
-            # Auto-validate version
+            # Auto-validate version and synchronize authoritative status
             try:
-                await self.validation_service.validate_version(version)
+                report = await self.validation_service.validate_version(version)
+                new_status = "approved" if (report.is_valid and report.verdict == "APPROVED") else "rejected"
+                
+                # Synchronize status across Section 1 and DB
+                if "document_information" in version.sections:
+                    sec_content = version.sections["document_information"].content
+                    sec_content = re.sub(
+                        r"\*\*Status:\*\*\s*[^\n]+",
+                        f"**Status:** {new_status.replace('_', ' ').title()}",
+                        sec_content
+                    )
+                    version.sections["document_information"].content = sec_content
+                    await self.prd_service.version_repo.update(version.id, {
+                        "status": new_status,
+                        "sections": {k: v.dict() for k, v in version.sections.items()}
+                    })
+                else:
+                    await self.prd_service.version_repo.update(version.id, {"status": new_status})
+                version.status = new_status
             except Exception as val_err:
                 logger.warning(f"Auto-validation warning for job {job_id}: {val_err}")
 

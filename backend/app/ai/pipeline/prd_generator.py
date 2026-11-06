@@ -6,7 +6,7 @@ from app.ai.gateway import AIGatewayInterface
 from app.models.analysis import AnalysisRecord
 from app.models.clarification import ClarificationSession
 from app.models.prd import PRDSectionContent, SECTION_TITLES, CANONICAL_SECTIONS
-from app.ai.pipeline.requirement_engineer import clean_system_behavior
+from app.ai.pipeline.requirement_engineer import clean_system_behavior, normalize_provenance
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ Generate production-ready technical specifications for the following 8 sections 
 3. "integration_requirements": External systems, APIs, or protocols explicitly required. If none specified, state that MVP operates self-contained and list prospective integrations as open architectural considerations.
 4. "security_and_privacy_requirements": Role-based access control, data encryption in transit/rest, audit logging, and domain-specific privacy controls. Do not invent arbitrary certifications.
 5. "dependencies_and_constraints": Platform, hosting, operating, or institutional constraints directly impacting '{title}'.
-6. "success_metrics": Quantifiable, testable KPIs measuring product effectiveness grounded strictly in confirmed product capabilities (e.g. 100% adherence to confidence threshold gating, 100% citation grounding for delivered answers). DO NOT invent ungrounded percentage promises (e.g. "70% AI-only resolution", "85% average confidence", "40% faster", "CSAT 4.5/5", "handling time <= 5 min", "response time <= 2s") unless an exact baseline metric was explicitly provided in user input. Any operational targets must be explicitly labelled "[Proposed Target: Pending formal benchmark]".
+6. "success_metrics": Distinguish between technical invariants (system behaviors that must hold true by design) and measured business success KPIs. Ground success metrics strictly in confirmed capabilities. DO NOT invent ungrounded business KPIs or percentage promises (e.g. "70% AI-only resolution", "85% average confidence", "40% faster", "CSAT 4.5/5", "handling time <= 5 min", "response time <= 2s") unless an exact baseline metric was explicitly provided in user input. Any prospective business performance targets must be explicitly labelled "[Proposed Target: Pending formal benchmark]".
 7. "release_considerations": Phased rollout, alpha/beta validation, data migration, and operational handoff.
 8. "appendix_and_glossary": Domain-specific terms, acronyms, and operational definitions relevant to '{domain}'.
 
@@ -91,7 +91,7 @@ STRICT CONSTRAINTS:
 - ZERO self-referential mentions of the PRD Framework, Ollama timeouts, or requirements documentation tools.
 - Everything must be written from the perspective of an engineering team implementing '{title}'.
 - CONFIDENCE METRIC REPRESENTATION: Represent confidence scores strictly on a 0% to 100% scale (with the 80.0% threshold). Never mix 0-1 and 0-100 scales.
-- DATA RETENTION CONSISTENCY: Retain session dialogue transcripts strictly for active session duration per confirmed input. Operational data retention duration for archives, analytics, or compliance audits is an UNRESOLVED OPEN ARCHITECTURAL DECISION pending stakeholder policy. Do NOT invent 30-day, 90-day, or 1-year retention mandates unless explicitly provided in user input.
+- DATA RETENTION CONSISTENCY: Retain session dialogue transcripts strictly for active session duration per confirmed input. Operational data retention duration for archives, analytics, or compliance audits is an UNRESOLVED DECISION pending formal policy determination. Do NOT invent 24-hour, 30-day, 90-day, or 1-year retention mandates unless explicitly provided in user input.
 - CHANNELS: Voice, telephony, SMS, and video channels are out of scope. Do not include voice integration in system workflows or integrations.
 - TICKETING: MVP uses an internal escalation queue with context summary. External ticketing APIs (Zendesk, Jira, Freshdesk) are prospective future considerations / open decisions, not mandatory MVP requirements.
 - ARCHITECTURAL DECISIONS & FAILOVER: Classify databases, runtimes, failover schemes, and hosting choices as '[Proposed Option: Technology recommendation subject to infrastructure team review]' or '[Open Architectural Decision]'. NEVER assert automatic multi-zone hot standby failover, mandatory PostgreSQL, InfluxDB, or RabbitMQ as firm confirmed requirements.
@@ -157,6 +157,176 @@ def _coerce_batch_value(val: Any) -> str:
 class PRDGenerator:
     def __init__(self, ai_gateway: AIGatewayInterface):
         self.ai = ai_gateway
+        self.last_provenance_ledger: List[Dict[str, Any]] = []
+
+    def _build_provenance_ledger(
+        self,
+        analysis: AnalysisRecord,
+        frs: List[Dict[str, Any]],
+        nfrs: List[Dict[str, Any]],
+        brs: List[Dict[str, Any]],
+        acs: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        ledger: List[Dict[str, Any]] = []
+        entry_idx = 1
+
+        # 1. Objectives & Pain Points
+        for obj in (analysis.core_objectives or []):
+            ledger.append({
+                "statement_id": f"PL-{entry_idx:03d}",
+                "section_key": "product_vision_and_objectives",
+                "statement_text": f"Objective: {obj}",
+                "classification": "USER_CONFIRMED",
+                "source_reference": f"User Submission: Core Objectives",
+                "source_field": "core_objectives",
+                "related_requirement_id": "N/A",
+                "confidence_or_status": "High (Direct input)",
+                "is_approved_baseline": True
+            })
+            entry_idx += 1
+
+        # 2. Scope & Capabilities
+        for cap in (analysis.expected_capabilities or []):
+            ledger.append({
+                "statement_id": f"PL-{entry_idx:03d}",
+                "section_key": "product_scope",
+                "statement_text": f"In-Scope Capability: {cap}",
+                "classification": "USER_CONFIRMED",
+                "source_reference": f"User Raw Idea / Scope",
+                "source_field": "expected_capabilities",
+                "related_requirement_id": "N/A",
+                "confidence_or_status": "High (Direct input)",
+                "is_approved_baseline": True
+            })
+            entry_idx += 1
+
+        # 3. Functional Requirements
+        for fr in frs:
+            fid = fr.get("id")
+            title = fr.get("title", "")
+            prov = normalize_provenance(fr.get("provenance"))
+            src = fr.get("source_reference") or f"User Requirement: {title}"
+            is_base = prov in ["USER_CONFIRMED", "ASSIGNMENT_REQUIRED", "REFERENCE_SUPPORTED"]
+            ledger.append({
+                "statement_id": f"PL-{entry_idx:03d}",
+                "section_key": "functional_requirements",
+                "statement_text": f"{fid}: {title} - {fr.get('behavior', '')}",
+                "classification": prov,
+                "source_reference": src,
+                "source_field": "functional_requirements",
+                "related_requirement_id": fid,
+                "confidence_or_status": "Confirmed specification",
+                "is_approved_baseline": is_base
+            })
+            entry_idx += 1
+
+        # 4. Non-Functional Requirements
+        for nfr in nfrs:
+            nid = nfr.get("id")
+            title = nfr.get("title", "")
+            classification = nfr.get("classification", "Proposed target").lower()
+            if "confirmed" in classification or "assignment" in classification:
+                prov = "USER_CONFIRMED"
+                is_base = True
+            elif "open" in classification or "unresolved" in classification:
+                prov = "UNRESOLVED"
+                is_base = False
+            else:
+                prov = "PROPOSED"
+                is_base = False
+
+            ledger.append({
+                "statement_id": f"PL-{entry_idx:03d}",
+                "section_key": "non_functional_requirements",
+                "statement_text": f"{nid}: {title} - {nfr.get('description', '')}",
+                "classification": prov,
+                "source_reference": "System Architecture Baseline",
+                "source_field": "non_functional_requirements",
+                "related_requirement_id": nid,
+                "confidence_or_status": "Proposed / Pending Review",
+                "is_approved_baseline": is_base
+            })
+            entry_idx += 1
+
+        # 5. Business Rules
+        for br in brs:
+            bid = br.get("id")
+            title = br.get("title", "")
+            prov = normalize_provenance(br.get("provenance"))
+            src = br.get("source_reference") or "Domain Operational Standard"
+            is_base = prov in ["USER_CONFIRMED", "ASSIGNMENT_REQUIRED", "REFERENCE_SUPPORTED"]
+            ledger.append({
+                "statement_id": f"PL-{entry_idx:03d}",
+                "section_key": "business_rules",
+                "statement_text": f"{bid}: {title} - {br.get('description', '')}",
+                "classification": prov,
+                "source_reference": src,
+                "source_field": "business_rules",
+                "related_requirement_id": bid,
+                "confidence_or_status": "Confirmed invariant" if is_base else "Under review",
+                "is_approved_baseline": is_base
+            })
+            entry_idx += 1
+
+        # 6. Acceptance Criteria
+        for ac in acs:
+            acid = ac.get("id")
+            stmt = ac.get("statement", "")
+            rid = ac.get("requirement_id", "N/A")
+            ledger.append({
+                "statement_id": f"PL-{entry_idx:03d}",
+                "section_key": "acceptance_criteria",
+                "statement_text": f"{acid}: {stmt}",
+                "classification": "USER_CONFIRMED",
+                "source_reference": f"Traced to parent requirement {rid}",
+                "source_field": "acceptance_criteria",
+                "related_requirement_id": rid,
+                "confidence_or_status": "Testable criterion",
+                "is_approved_baseline": True
+            })
+            entry_idx += 1
+
+        # 7. Key Architecture & Governance Statements
+        ledger.append({
+            "statement_id": f"PL-{entry_idx:03d}",
+            "section_key": "data_requirements",
+            "statement_text": "Active session dialogue context maintained in session memory; long-term archival retention duration is unresolved pending legal policy.",
+            "classification": "UNRESOLVED",
+            "source_reference": "Corporate Governance & Privacy Review",
+            "source_field": "data_requirements",
+            "related_requirement_id": "N/A",
+            "confidence_or_status": "Policy decision pending",
+            "is_approved_baseline": False
+        })
+        entry_idx += 1
+
+        ledger.append({
+            "statement_id": f"PL-{entry_idx:03d}",
+            "section_key": "security_and_privacy_requirements",
+            "statement_text": "Statutory regulatory compliance frameworks (e.g. GDPR, CCPA, FERPA, HIPAA) are subject to institutional privacy assessment.",
+            "classification": "UNRESOLVED",
+            "source_reference": "Corporate Compliance Assessment",
+            "source_field": "security_and_privacy_requirements",
+            "related_requirement_id": "N/A",
+            "confidence_or_status": "Legal assessment pending",
+            "is_approved_baseline": False
+        })
+        entry_idx += 1
+
+        ledger.append({
+            "statement_id": f"PL-{entry_idx:03d}",
+            "section_key": "dependencies_and_constraints",
+            "statement_text": "Hosting deployment architecture (cloud container environment vs on-premises host) is subject to infrastructure team review.",
+            "classification": "UNRESOLVED",
+            "source_reference": "Infrastructure Architecture Review",
+            "source_field": "dependencies_and_constraints",
+            "related_requirement_id": "N/A",
+            "confidence_or_status": "Infrastructure decision pending",
+            "is_approved_baseline": False
+        })
+        entry_idx += 1
+
+        return ledger
 
     def _clean_mermaid_text(self, text: str) -> str:
         """Sanitizes text for Mermaid sequence diagram lines without abrupt character or word truncation."""
@@ -451,7 +621,7 @@ class PRDGenerator:
                 "data_requirements": (
                     "- **Domain Entity Persistence:** Structured storage for CustomerSession, ChatMessage, KBArticleReference, EscalationTicket, and EscalationAuditRecord.\n"
                     "- **Session Isolation:** Complete isolation between customer conversation sessions; cross-customer data leakage is strictly prohibited.\n"
-                    "- **Data Retention Policy:** Active chat session state is maintained for session duration and cached up to 24 hours. Long-term archival retention duration and de-identification schedules are documented as an Open Architectural Decision pending corporate privacy review."
+                    "- **Data Retention Policy:** Active chat session state is maintained strictly for the duration of the active dialogue session. Long-term archival retention duration and de-identification schedules are documented as an Unresolved Decision pending corporate privacy and compliance determination."
                 ),
                 "integration_requirements": (
                     "- **Core Interface:** Standard REST and WebSocket APIs for web chat communication and knowledge-base search.\n"
@@ -459,19 +629,19 @@ class PRDGenerator:
                 ),
                 "security_and_privacy_requirements": (
                     "- **Role-Based Access Control (RBAC):** Strict permission checks separating Customer and Customer Service Representative privileges.\n"
-                    "- **Data Encryption:** All session dialogues and records encrypted in transit using TLS 1.3 and at rest using AES-256.\n"
-                    "- **Audit Trail:** Immutable audit logging for all escalation events and ticket dispositions.\n"
-                    "- **Regulatory Compliance (Open Decision):** Baseline data protection enforced; formal applicability of GDPR, CCPA, or other statutory frameworks pending institutional compliance review."
+                    "- **Data Encryption:** Session dialogues and records protected in transit and at rest [Proposed Target: Cipher suite subject to security review].\n"
+                    "- **Audit Trail:** Tamper-evident audit logging for all escalation events and ticket dispositions.\n"
+                    "- **Regulatory Compliance (Unresolved Decision):** Baseline data protection enforced; formal applicability of GDPR, CCPA, or other statutory frameworks pending institutional compliance review."
                 ),
                 "dependencies_and_constraints": (
                     "- **Web Interface:** Accessible via standard modern web browser viewports over secure HTTPS.\n"
-                    "- **Hosting Target (Open Decision):** Deployment environment (Cloud container service vs On-Premises host) subject to infrastructure team review.\n"
-                    "- **Operating System Target (Open Decision):** Target OS environment pending deployment architecture approval (no fixed Linux mandate)."
+                    "- **Hosting Target (Unresolved Decision):** Deployment environment (Cloud container service vs On-Premises host) subject to infrastructure team review.\n"
+                    "- **Operating System Target (Unresolved Decision):** Target OS environment pending deployment architecture approval (no fixed Linux mandate)."
                 ),
                 "success_metrics": (
-                    "- **Grounded Response Rate:** 100% of delivered automated answers verified to cite approved knowledge-base articles.\n"
-                    "- **Threshold Precision:** 100% of candidate answers with confidence < 80.0% successfully intercepted and escalated.\n"
-                    "- **Context Transfer Fidelity:** 100% of escalated inquiries delivered to human agents with full transcripts and 3-bullet summaries."
+                    "- **Knowledge Grounding Invariant:** System strictly gates answers such that 100% of delivered automated answers cite approved knowledge-base articles [Technical Invariant / Invariant Rule].\n"
+                    "- **Threshold Gating Invariant:** System intercepts candidate responses with evaluated confidence < 80.0% and redirects to human escalation [Technical Invariant / System Rule].\n"
+                    "- **Operational Resolution Efficiency:** Target operational query deflection and resolution efficiency [Proposed Target: Baseline metrics to be measured during initial pilot]."
                 ),
                 "release_considerations": (
                     "- **Milestone 1 (Alpha):** Internal deployment with approved KB ingestion and simulated dialogue turns.\n"
@@ -642,19 +812,19 @@ class PRDGenerator:
             title = item.get("title")
             actor = item.get("actor") or (analysis.intended_users[0] if analysis.intended_users else "Authorized Actor")
             trigger = item.get("trigger") or f"{actor} initiates {title.lower()}"
-            precond = item.get("precondition") or f"Actor has active authorized session for {title.lower()}"
-            inputs = item.get("inputs") or f"Standard schema payload for {title.lower()}"
+            precond = item.get("precondition") or "[Unresolved: Precondition pending specification]"
+            inputs = item.get("inputs") or "[Unresolved: Input parameters pending schema definition]"
             behavior = item.get("behavior") or item.get("description", "")
             clean_beh = clean_system_behavior(behavior)
             if not clean_beh.lower().startswith("the system"):
                 clean_beh = f"The system {clean_beh}"
-            constraint = item.get("business_constraint") or (analysis.explicit_constraints[0] if analysis.explicit_constraints else "Enforces strict domain validation rules")
-            alt_paths = item.get("alternate_failure_paths") or "Halt transaction safely and notify actor with diagnostic code"
-            outcome = item.get("expected_outcome") or "State transition is recorded and verified confirmation is returned"
-            data_changes = item.get("relevant_data_changes") or f"Updates {analysis.problem_domain} ledger with timestamp and actor ID"
-            auth = item.get("authorization_requirements") or f"Authenticated {actor} role"
+            constraint = item.get("business_constraint") or (analysis.explicit_constraints[0] if analysis.explicit_constraints else "[Unresolved: Business constraint to be defined by stakeholders]")
+            alt_paths = item.get("alternate_failure_paths") or "[Unresolved: Failure handling path pending specification]"
+            outcome = item.get("expected_outcome") or "[Unresolved: Expected outcome pending verification criteria]"
+            data_changes = item.get("relevant_data_changes") or "[Unresolved: Data mutations pending data model design]"
+            auth = item.get("authorization_requirements") or (f"Authenticated {actor} role" if actor else "[Unresolved: Authorization policy pending security review]")
             prio = item.get("priority", "Must Have")
-            prov = item.get("provenance", "confirmed_user_input")
+            prov = normalize_provenance(item.get("provenance"))
             src_ref = item.get("source_reference") or f"User Requirement: {title}"
             linked_acs = ", ".join(item.get("acceptance_criteria_ids", [])) or "None"
 
@@ -800,6 +970,11 @@ class PRDGenerator:
                 mit = r.get("mitigation_strategy") or r.get("mitigation") or "Implement automated validation, monitoring, and circuit breakers"
                 cont = r.get("contingency_plan") or r.get("contingency") or "Fail safe to human escalation with diagnostic telemetry"
                 owner = r.get("owner_role") or r.get("owner") or "Systems Engineering Lead"
+                # Sanitize invented retention and ticketing from assembled risk rows
+                ret_pat = r"\b(?:automatic deletion after \d+\s*(?:days|day|months|years)|retained for \d+\s*(?:days|day|months|years)|retention of (?:at least )?\d+\s*(?:days|day|months|years)|\b30 days\b|\b30-day\b)\b"
+                mit = re.sub(ret_pat, "automatic deletion according to [Unresolved: Pending stakeholder specification]", mit, flags=re.IGNORECASE)
+                cont = re.sub(ret_pat, "automatic deletion according to [Unresolved: Pending stakeholder specification]", cont, flags=re.IGNORECASE)
+                risk_desc = re.sub(ret_pat, "[Unresolved: Pending stakeholder specification]", risk_desc, flags=re.IGNORECASE)
                 risk_text += f"| **{risk_id}** | {cat} | {risk_desc} | {root} | {prob} | {impact} | {mit} | {cont} | {owner} |\n"
         else:
             risk_text += f"| **RSK-001** | Data Integrity | Unverified domain inputs | Lack of strict schema validation | Medium | High | Enforce strict schema validation rules | Reject invalid payloads and prompt user with diagnostic | Engineering Lead |\n"
@@ -809,13 +984,16 @@ class PRDGenerator:
         uj_content = f"{mermaid_diagram}\n\n### Step-by-Step User Journey Progression\n"
         if journeys:
             for idx, j in enumerate(journeys, 1):
+                act = re.sub(r"\b(?:queue is full|when the queue is full)\b", "inquiry queue is busy", j.get('actor_action', 'Acts'), flags=re.IGNORECASE)
+                resp = re.sub(r"\b(?:queue is full|when the queue is full)\b", "inquiry queue is busy", j.get('system_response', 'Responds'), flags=re.IGNORECASE)
                 uj_content += (
                     f"**Stage {idx}: {j.get('stage_name', f'Step {idx}')}**\n"
-                    f"- **Actor ({j.get('actor', 'User')}):** {j.get('actor_action', 'Acts')}\n"
-                    f"- **System Response:** {j.get('system_response', 'Responds')}\n"
+                    f"- **Actor ({j.get('actor', 'User')}):** {act}\n"
+                    f"- **System Response:** {resp}\n"
                 )
                 if j.get("error_or_edge_case"):
-                    uj_content += f"- **Edge Case / Error Handling:** {j.get('error_or_edge_case')}\n"
+                    edge = re.sub(r"\b(?:queue is full|when the queue is full)\b", "inquiry queue is busy", j.get('error_or_edge_case'), flags=re.IGNORECASE)
+                    uj_content += f"- **Edge Case / Error Handling:** {edge}\n"
                 uj_content += "\n"
         else:
             uj_content += "1. **Request Submission:** User submits parameters.\n2. **Processing:** System verifies business rules.\n3. **Fulfillment:** User receives verified result.\n"
@@ -990,6 +1168,23 @@ class PRDGenerator:
                 content=system_data.get("appendix_and_glossary", "")
             ),
         }
+
+        # Build and append Full Document Provenance Ledger
+        ledger = self._build_provenance_ledger(analysis, frs, nfrs, brs, acs)
+        self.last_provenance_ledger = ledger
+
+        ledger_md = (
+            "\n\n### Full Document Provenance Ledger\n\n"
+            "| Statement ID | Section | Statement / Claim Summary | Provenance Classification | Source Reference | Related ID | Baseline Status |\n"
+            "|---|---|---|---|---|---|---|\n"
+        )
+        for entry in ledger:
+            base_str = "Approved Baseline" if entry["is_approved_baseline"] else "Unresolved / Proposed"
+            stmt_clean = entry['statement_text'].replace('|', '-').replace('\n', ' ')
+            src_clean = entry['source_reference'].replace('|', '-').replace('\n', ' ')
+            ledger_md += f"| **{entry['statement_id']}** | {entry['section_key']} | {stmt_clean[:80]} | `{entry['classification']}` | {src_clean[:60]} | {entry['related_requirement_id']} | {base_str} |\n"
+
+        sections["appendix_and_glossary"].content += ledger_md
 
         # Handle assignment-specific mandatory sections if present
         if analysis.assignment_requirements and analysis.assignment_requirements.mandatory_sections:

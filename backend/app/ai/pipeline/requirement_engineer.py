@@ -65,29 +65,28 @@ Clarifications & Confirmed Details:
 Instructions:
 1. Generate detailed Functional Requirements (FR-001..FR-004) covering strictly the confirmed target capabilities of '{product_category}'.
    CRITICAL SCOPE CONSTRAINTS:
+   - Ground all requirements strictly in confirmed facts, user submissions, and explicit scope.
    - NEVER create a requirement merely to satisfy a minimum section count.
-   - NEVER generate requirements for external third-party ticketing platforms (e.g. Zendesk, Freshdesk, Jira) or external CRM synchronization when external ticketing is out of scope for MVP. Focus strictly on core self-contained capabilities.
-   - For Customer Support Assistant, functional requirements must be strictly limited to:
-     1. Grounded Knowledge retrieval and answer delivery using approved KB articles (FR-001)
-     2. Per-session conversation history management in session cache up to 24 hours (FR-002; NEVER 30 days)
-     3. Low-confidence answer detection (< 80.0%) and automatic internal queue escalation (FR-003)
-     4. Concise context summarization for human escalation handoff (FR-004: under 200 words; align with narrative sections)
-     Do NOT generate FR-005 for external ticketing or external chat platforms.
+   - NEVER generate requirements for external third-party integrations (e.g. ticketing, CRM, payment, hardware) when out of scope for MVP. Focus strictly on core self-contained capabilities.
+   - RETENTION INTEGRITY: Never invent arbitrary retention periods (such as 24-hour, 30-day, 90-day, or 1-year limits). If retention policy is unstated, note that operational data retention duration is an UNRESOLVED DECISION pending formal policy determination.
+   - NO FABRICATED DEFAULTS: If any requirement attribute (precondition, input, constraint, failure path, expected outcome, data changes) is missing from the source context, explicitly mark it as '[Unresolved: Pending stakeholder specification]' rather than inventing generic system behaviors.
    - Every requirement MUST explicitly specify actor, trigger, precondition, inputs, behavior, business_constraint, alternate_failure_paths, expected_outcome, relevant_data_changes, authorization_requirements, priority, provenance, source_reference, and description.
 
 2. Generate Non-Functional Requirements (NFR-001..NFR-003) for performance latency, data protection, and availability:
    - Ground NFRs strictly in source inputs and confirmed facts.
    - NEVER invent firm latency SLAs (e.g. '< 2 seconds') or availability SLAs (e.g. '99.5% with automatic failover to hot standby') as 'Confirmed requirement'.
-   - Classify all unconfirmed performance bounds, availability targets, and encryption targets as 'Proposed target' or 'Open decision'.
+   - Classify all unconfirmed performance bounds, availability targets, and encryption targets as 'Proposed target' or 'Open decision', and assign their priority strictly as 'Should Have' (NEVER 'Must Have').
    - Do NOT fabricate specific external compliance certifications unless specified in user context.
 
 3. Generate Acceptance Criteria (AC-001..AC-008) formatted strictly as 'Given [context], When [action], Then [measurable result]':
-   - Mandatory tests for numerical thresholds:
+   - Every acceptance criterion must trace directly to an existing functional or non-functional requirement.
+   - Do NOT introduce new features, new integrations, new actors, new time limits, new numerical thresholds, or new workflows in acceptance criteria.
+   - Mandatory tests for numerical thresholds present in confirmed scope:
      a) Below threshold (e.g., 79.9% confidence or 74.9% attendance): Verify exact failure/escalation behavior.
      b) Exact threshold boundary (e.g., 80.0% confidence or 75.0% attendance): Verify exact eligibility behavior.
      c) Above threshold (e.g., 80.1% confidence or 75.1% attendance): Verify exact permitted behavior.
-     d) Missing supporting data (e.g., missing approved article, zero conducted sessions): Automated response suppressed, escalate safely.
-     e) Calculation or service failure (e.g., confidence algorithm failure): Safe fallback to escalation with diagnostic log.
+     d) Missing supporting data: Automated response suppressed, escalate safely.
+     e) Calculation or service failure: Safe fallback to escalation with diagnostic log.
      f) Complex or multi-part input: Follow confirmed complexity escalation policy.
    - Acceptance criteria MUST describe expected domain behavior, NOT generic state-transition diagnostics.
    - NEVER use generic placeholder phrases like "Given an authenticated actor with valid preconditions..." or "verifies authorization, executes the transition successfully".
@@ -112,7 +111,7 @@ Return ONLY a valid JSON object matching this schema:
       "relevant_data_changes": "Persistent ledger records created or modified",
       "authorization_requirements": "Role or permission required",
       "priority": "Must Have | Should Have | Could Have",
-      "provenance": "confirmed_user_input | assignment_instruction | explicit_clarification | ai_proposed_assumption | external_reference | unresolved_decision",
+      "provenance": "USER_CONFIRMED | ASSIGNMENT_REQUIRED | REFERENCE_SUPPORTED | INFERRED | PROPOSED | UNRESOLVED",
       "source_reference": "User Input: ...",
       "acceptance_criteria_ids": ["AC-001", "AC-002"]
     }}
@@ -123,7 +122,7 @@ Return ONLY a valid JSON object matching this schema:
       "title": "Performance / Security / Availability Title",
       "description": "The system shall maintain [quantitative metric / target bound]...",
       "classification": "Confirmed requirement | Assignment requirement | Proposed target | Open decision",
-      "priority": "Must Have",
+      "priority": "Should Have",
       "acceptance_criteria_ids": ["AC-001"]
     }}
   ],
@@ -169,30 +168,33 @@ def extract_and_repair_json(text: str) -> Optional[dict]:
     return None
 
 def normalize_provenance(prov: Optional[str]) -> str:
-    valid_provenances = {
-        "confirmed_user_input",
-        "assignment_instruction",
-        "explicit_clarification",
-        "ai_proposed_assumption",
-        "external_reference",
-        "unresolved_decision"
+    canonical = {
+        "USER_CONFIRMED": "USER_CONFIRMED",
+        "ASSIGNMENT_REQUIRED": "ASSIGNMENT_REQUIRED",
+        "REFERENCE_SUPPORTED": "REFERENCE_SUPPORTED",
+        "INFERRED": "INFERRED",
+        "PROPOSED": "PROPOSED",
+        "UNRESOLVED": "UNRESOLVED",
     }
     if not prov:
-        return "confirmed_user_input"
-    p = prov.strip().lower()
-    if p in valid_provenances:
-        return p
-    if "user" in p or "input" in p:
-        return "confirmed_user_input"
-    if "assignment" in p or "instruct" in p:
-        return "assignment_instruction"
-    if "clarif" in p:
-        return "explicit_clarification"
-    if "external" in p or "standard" in p or "benchmark" in p:
-        return "external_reference"
-    if "unresolved" in p or "open" in p or "decision" in p or "recommendation" in p:
-        return "unresolved_decision"
-    return "ai_proposed_assumption"
+        return "USER_CONFIRMED"
+    p = prov.strip().upper()
+    if p in canonical:
+        return canonical[p]
+    p_low = prov.strip().lower()
+    if "user" in p_low or "input" in p_low or "confirmed" in p_low:
+        return "USER_CONFIRMED"
+    if "assignment" in p_low or "instruct" in p_low:
+        return "ASSIGNMENT_REQUIRED"
+    if "clarif" in p_low:
+        return "USER_CONFIRMED"
+    if "reference" in p_low or "external" in p_low or "standard" in p_low or "benchmark" in p_low:
+        return "REFERENCE_SUPPORTED"
+    if "unresolved" in p_low or "open" in p_low:
+        return "UNRESOLVED"
+    if "proposed" in p_low or "recommend" in p_low:
+        return "PROPOSED"
+    return "INFERRED"
 
 def clean_system_behavior(b: str) -> str:
     b = (b or "").strip()
@@ -295,14 +297,14 @@ class RequirementEngineer:
                         title = fr.get("title", f"Capability {idx}")
                         actor = fr.get("actor") or (analysis.intended_users[(idx - 1) % len(analysis.intended_users)] if analysis.intended_users else "Authorized Actor")
                         trigger = fr.get("trigger") or f"{actor} initiates {title.lower()}"
-                        precond = fr.get("precondition") or f"Actor has active authorized session for {title.lower()}"
-                        inputs = fr.get("inputs") or f"Standard schema payload for {title.lower()}"
-                        behavior = fr.get("behavior") or fr.get("description") or f"processes and fulfills {title.lower()} with audit validation"
-                        constraint = fr.get("business_constraint") or (analysis.explicit_constraints[0] if analysis.explicit_constraints else "Enforces strict domain validation rules")
-                        alt_paths = fr.get("alternate_failure_paths") or "Halt transaction safely and notify actor with diagnostic code"
-                        outcome = fr.get("expected_outcome") or "State transition is recorded and verified confirmation is returned"
-                        data_changes = fr.get("relevant_data_changes") or f"Updates {analysis.problem_domain} ledger with timestamp and actor ID"
-                        auth = fr.get("authorization_requirements") or f"Authenticated {actor} role"
+                        precond = fr.get("precondition") or "[Unresolved: Precondition pending specification]"
+                        inputs = fr.get("inputs") or "[Unresolved: Input parameters pending schema definition]"
+                        behavior = fr.get("behavior") or fr.get("description") or f"processes and fulfills {title.lower()} within confirmed scope"
+                        constraint = fr.get("business_constraint") or (analysis.explicit_constraints[0] if analysis.explicit_constraints else "[Unresolved: Business constraint to be defined by stakeholders]")
+                        alt_paths = fr.get("alternate_failure_paths") or "[Unresolved: Failure handling path pending specification]"
+                        outcome = fr.get("expected_outcome") or "[Unresolved: Expected outcome pending verification criteria]"
+                        data_changes = fr.get("relevant_data_changes") or "[Unresolved: Data mutations pending data model design]"
+                        auth = fr.get("authorization_requirements") or (f"Authenticated {actor} role" if actor else "[Unresolved: Authorization policy pending security review]")
                         prov = normalize_provenance(fr.get("provenance"))
                         src_ref = fr.get("source_reference") or f"User Requirement: {title}"
                         clean_beh = clean_system_behavior(behavior)
@@ -418,18 +420,18 @@ class RequirementEngineer:
                         behavior = f.get("behavior", "")
                         precond = f.get("precondition", "")
 
-                        # Sanitize 30-day retention from precondition and description
-                        if "30 days" in precond or "30-day" in precond:
+                        # Sanitize ungrounded 30-day and 24-hour retention from precondition, description, and constraints
+                        if any(term in precond.lower() for term in ["30 days", "30-day", "24 hours", "24-hour", "24h"]):
                             f["precondition"] = re.sub(
-                                r"(?:less\s+than|within|up\s+to)?\s*30\s*days(?:\s+old)?",
-                                "within the active session window (up to 24 hours)",
+                                r"(?:less\s+than|within|up\s+to)?\s*(?:30\s*days|24\s*hours|24h)(?:\s+old)?",
+                                "within the active dialogue session",
                                 precond,
                                 flags=re.IGNORECASE
                             )
-                        if "30 days" in desc or "30-day" in desc or "30 days" in b_const or "30 days" in behavior:
-                            desc = re.sub(r"\b(?:less\s+than\s+30\s*days(?:\s+old)?|30-day\s+session|retention\s+of\s+at\s+least\s+30\s*days|minimum\s+of\s+30\s*days|retained\s+for\s+30\s*days|enforce\s+retention\s+of\s+at\s+least\s+30\s*days)\b", "active session transcript is preserved in session memory, with archival retention duration treated as an open decision", desc, flags=re.IGNORECASE)
-                            b_const = re.sub(r"\b(?:less\s+than\s+30\s*days(?:\s+old)?|30-day\s+session|retention\s+of\s+at\s+least\s+30\s*days|minimum\s+of\s+30\s*days|retained\s+for\s+30\s*days|enforce\s+retention\s+of\s+at\s+least\s+30\s*days)\b", "operational data retention duration is an unresolved open decision", b_const, flags=re.IGNORECASE)
-                            behavior = re.sub(r"\b(?:less\s+than\s+30\s*days(?:\s+old)?|30-day\s+session|retention\s+of\s+at\s+least\s+30\s*days|minimum\s+of\s+30\s*days|retained\s+for\s+30\s*days|enforce\s+retention\s+of\s+at\s+least\s+30\s*days)\b", "persists active dialogue context in session cache", behavior, flags=re.IGNORECASE)
+                        if any(term in desc.lower() or term in b_const.lower() or term in behavior.lower() for term in ["30 days", "30-day", "24 hours", "24-hour", "24h"]):
+                            desc = re.sub(r"\b(?:less\s+than\s+(?:30\s*days|24\s*hours)(?:\s+old)?|(?:30-day|24-hour)\s+session|retention\s+of\s+at\s+least\s+(?:30\s*days|24\s*hours)|minimum\s+of\s+(?:30\s*days|24\s*hours)|retained\s+for\s+(?:30\s*days|24\s*hours)|cached\s+up\s+to\s+24\s*hours)\b", "active dialogue transcript is maintained in session memory; archival retention duration is an unresolved decision", desc, flags=re.IGNORECASE)
+                            b_const = re.sub(r"\b(?:less\s+than\s+(?:30\s*days|24\s*hours)(?:\s+old)?|(?:30-day|24-hour)\s+session|retention\s+of\s+at\s+least\s+(?:30\s*days|24\s*hours)|minimum\s+of\s+(?:30\s*days|24\s*hours)|retained\s+for\s+(?:30\s*days|24\s*hours)|cached\s+up\s+to\s+24\s*hours)\b", "operational data retention duration is an unresolved decision", b_const, flags=re.IGNORECASE)
+                            behavior = re.sub(r"\b(?:less\s+than\s+(?:30\s*days|24\s*hours)(?:\s+old)?|(?:30-day|24-hour)\s+session|retention\s+of\s+at\s+least\s+(?:30\s*days|24\s*hours)|minimum\s+of\s+(?:30\s*days|24\s*hours)|retained\s+for\s+(?:30\s*days|24\s*hours)|cached\s+up\s+to\s+24\s*hours)\b", "persists active dialogue context in session memory", behavior, flags=re.IGNORECASE)
                             f["description"] = desc
                             f["business_constraint"] = b_const
                             f["behavior"] = behavior
@@ -854,15 +856,15 @@ class RequirementEngineer:
                 ac_id_edge = f"AC-{idx*2:03d}"
                 actor = analysis.intended_users[(idx - 1) % len(analysis.intended_users)] if analysis.intended_users else "Authorized Practitioner"
                 trigger = f"{actor} submits valid request for {cap.lower()}"
-                precond = f"{actor} has active authorized session for {analysis.problem_domain}"
-                inputs = f"Validated domain parameters for {cap.lower()}"
-                behavior = f"validates input payload against schema rules, updates internal domain state, and commits audit trail for {cap.lower()}"
-                constraint = analysis.explicit_constraints[0] if analysis.explicit_constraints else "Enforces strict domain validation and state consistency"
-                alt_paths = "Safely halts state transition and returns actionable diagnostic code"
-                outcome = f"{cap} is committed and verifiable confirmation receipt is returned to {actor}"
-                data_changes = f"Appends domain mutation to {analysis.problem_domain} ledger with timestamp"
+                precond = f"Authorized {actor} initiates request for {cap.lower()}"
+                inputs = f"Operation payload for {cap.lower()}"
+                behavior = f"validates input payload against domain rules, updates state, and records audit trail for {cap.lower()}"
+                constraint = analysis.explicit_constraints[0] if analysis.explicit_constraints else "Operates in accordance with target domain specifications"
+                alt_paths = f"Rejects invalid parameters for {cap.lower()} and logs operational diagnostic event"
+                outcome = f"{cap} processing completes and transaction status is updated"
+                data_changes = f"Records transaction outcome for {cap.lower()}"
                 auth = f"Authenticated {actor} role"
-                prov = "confirmed_user_input"
+                prov = "USER_CONFIRMED"
                 src_ref = f"User Capability: {cap}"
 
                 full_desc = (
@@ -908,26 +910,26 @@ class RequirementEngineer:
         fallback_nfrs = [
             {
                 "id": "NFR-001",
-                "title": f"{analysis.problem_domain} Operational Latency",
-                "description": f"The system shall maintain 95th percentile response times under 2000ms for {analysis.product_category} transactions under baseline user concurrency. [Open Architectural Decision: Target bound pending formal load benchmark]",
-                "classification": "Open decision",
-                "priority": "Must Have",
+                "title": f"{analysis.problem_domain} Operational Responsiveness",
+                "description": f"The system shall maintain responsive transaction handling for {analysis.product_category} operations under standard user concurrency [Proposed Target: Specific latency bound subject to formal benchmark].",
+                "classification": "Proposed target",
+                "priority": "Should Have",
                 "acceptance_criteria_ids": [fallback_acs[0]["id"] if fallback_acs else "AC-001"]
             },
             {
                 "id": "NFR-002",
                 "title": f"{analysis.problem_domain} Data Protection & Security",
-                "description": f"All {analysis.product_category} session records and domain entities must be encrypted in transit using TLS 1.3 and encrypted at rest using AES-256. [Open Architectural Decision: Specific regulatory frameworks pending institutional review]",
-                "classification": "Open decision",
-                "priority": "Must Have",
+                "description": f"All {analysis.product_category} session records and domain entities must be protected in transit and at rest [Proposed Target: Specific cryptographic cipher suite and regulatory frameworks pending institutional review].",
+                "classification": "Proposed target",
+                "priority": "Should Have",
                 "acceptance_criteria_ids": [fallback_acs[0]["id"] if fallback_acs else "AC-001"]
             },
             {
                 "id": "NFR-003",
                 "title": f"{analysis.product_category} Availability & Fault Tolerance",
-                "description": f"The system shall target 99.5% operational availability during scheduled operational hours with automated error recovery. [Proposed Target: Operational baseline to be confirmed during initial release]",
+                "description": f"The system shall target high operational availability during scheduled operational hours with graceful fault recovery [Proposed Target: Operational availability SLA to be confirmed during initial release].",
                 "classification": "Proposed target",
-                "priority": "Must Have",
+                "priority": "Should Have",
                 "acceptance_criteria_ids": [fallback_acs[-1]["id"] if fallback_acs else "AC-001"]
             }
         ]

@@ -85,7 +85,11 @@ async def test_ai_customer_support_assistant_regression():
     # Verify provenance tags
     for b in req_data["business_rules"]:
         assert "provenance" in b
-        assert b["provenance"] in ["confirmed_user_input", "explicit_clarification", "assignment_instruction", "ai_proposed_assumption", "recommendation", "unresolved_open_decision", "unresolved_decision"]
+        assert b["provenance"] in [
+            "confirmed_user_input", "explicit_clarification", "assignment_instruction",
+            "ai_proposed_assumption", "recommendation", "unresolved_open_decision", "unresolved_decision",
+            "USER_CONFIRMED", "ASSIGNMENT_REQUIRED", "REFERENCE_SUPPORTED", "INFERRED", "PROPOSED", "UNRESOLVED"
+        ]
 
     # 5. Risk Analysis
     risk_res = await risk_analyst.analyze_risks(RiskAnalystInput(

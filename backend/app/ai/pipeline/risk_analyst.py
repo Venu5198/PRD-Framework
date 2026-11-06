@@ -1,4 +1,5 @@
 import json
+import re
 import logging
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -46,6 +47,7 @@ Instructions:
 3. Assign category: "Functional", "Data Privacy", "Security", "Operational", or "Integration".
 4. Provide concrete, actionable engineering mitigations, root causes, contingency plans, and owner roles.
 5. NEVER use generic placeholder text like "Operational risk" or "Monitor and log".
+6. DO NOT invent arbitrary data retention periods (e.g., do NOT mandate 30 days, 90 days, or 1 year). If data retention is unspecified, refer to it as [Unresolved: Pending stakeholder specification].
 
 Return ONLY a valid JSON object matching this schema:
 {{
@@ -113,6 +115,12 @@ class RiskAnalyst:
                 root = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", root, flags=re.IGNORECASE)
                 mit = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", mit, flags=re.IGNORECASE)
                 cont = re.sub(r"\b(?:ticket creation|escalation ticket|ticket id|tickets|ticket)\b", "escalation inquiry", cont, flags=re.IGNORECASE)
+
+                # Sanitize invented retention claims from risks
+                ret_sanitize = r"\b(?:automatic deletion after \d+\s*(?:days|day|months|years)|retained for \d+\s*(?:days|day|months|years)|retention of (?:at least )?\d+\s*(?:days|day|months|years)|\b30 days\b|\b30-day\b)\b"
+                mit = re.sub(ret_sanitize, "automatic deletion according to [Unresolved: Pending stakeholder specification]", mit, flags=re.IGNORECASE)
+                cont = re.sub(ret_sanitize, "automatic deletion according to [Unresolved: Pending stakeholder specification]", cont, flags=re.IGNORECASE)
+                ev = re.sub(ret_sanitize, "[Unresolved: Pending stakeholder specification]", ev, flags=re.IGNORECASE)
                 
                 parsed_risks.append(RiskItem(
                     id=f"RSK-{idx:03d}",

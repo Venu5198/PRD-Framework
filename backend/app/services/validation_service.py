@@ -1,7 +1,7 @@
 import re
 import logging
 from typing import Dict, Any, List, Optional, Set
-from app.models.prd import PRDVersion, CANONICAL_SECTIONS, SECTION_TITLES
+from app.models.prd import PRDVersion, PRDSectionContent, CANONICAL_SECTIONS, SECTION_TITLES
 from app.models.analysis import AnalysisRecord
 from app.models.validation import ValidationIssue, ValidationReport
 from app.db.repository import ValidationRepository, AnalysisRepository
@@ -327,6 +327,14 @@ class ValidationService:
 
         for dup in duplicate_frs:
             issues.append(ValidationIssue(
+                rule_id="VAL-DUP-001",
+                severity="error",
+                section_key="functional_requirements",
+                title=f"Duplicate Functional Requirement Identifier: {dup}",
+                description=f"Identifier {dup} appears multiple times in functional requirements.",
+                recommendation="Assign unique, stable identifiers to each requirement."
+            ))
+            issues.append(ValidationIssue(
                 rule_id="VAL-REQ-001",
                 severity="error",
                 section_key="functional_requirements",
@@ -335,6 +343,32 @@ class ValidationService:
                 recommendation="Assign unique, stable identifiers to each requirement."
             ))
             score -= 8
+
+        # VAL-REQ-002: Generic or Fabricated Requirement Attributes Check
+        if fr_section and not fr_section.is_na:
+            fr_text_lower = fr_section.content.lower()
+            fabricated_patterns = [
+                r"actor has active authorized session",
+                r"standard schema payload",
+                r"enforces strict domain validation rules",
+                r"halt transaction safely and notify actor with diagnostic code",
+                r"state transition is recorded and verified confirmation is returned",
+                r"updates\s+[\w\s]+\s+ledger with timestamp and actor id"
+            ]
+            for pat in fabricated_patterns:
+                f_match = re.search(pat, fr_text_lower)
+                if f_match:
+                    match_str = f_match.group(0)
+                    issues.append(ValidationIssue(
+                        rule_id="VAL-REQ-002",
+                        severity="error",
+                        section_key="functional_requirements",
+                        title=f"Fabricated Generic Requirement Attribute: '{match_str}'",
+                        description=f"Requirement contains fabricated default behavior '{match_str}'. Missing source information must remain explicitly unresolved rather than defaulting to generic system actions.",
+                        recommendation="Remove generic fallback defaults; mark missing preconditions, inputs, constraints, failure paths, and outcomes as [Unresolved: Pending stakeholder specification]."
+                    ))
+                    score -= 10
+                    break
 
         # Traceability: FR -> AC
         ac_section = prd_version.sections.get("acceptance_criteria")
@@ -839,7 +873,7 @@ class ValidationService:
                         rule_stmt = parts[3].strip()
                         rule_prov = parts[4].replace("`", "").strip().lower()
                         source_ref = parts[5].strip().lower()
-                        conf_req = parts[6].strip().lower() if len(parts) >= 7 else ""
+                        conf_req = parts[-2].strip().lower() if len(parts) >= 7 else ""
 
                         # 1. Check for cross-domain contamination in source reference
                         if "attendance" in source_ref and "support" in (analysis.problem_domain or "").lower():
@@ -886,6 +920,14 @@ class ValidationService:
                                 p_val = float(pct.replace("%", ""))
                                 if p_val not in user_pct_vals and pct not in user_evidence_str:
                                     issues.append(ValidationIssue(
+                                        rule_id="VAL-PROV-003",
+                                        severity="error",
+                                        section_key="business_rules",
+                                        title=f"Source Reference Does Not Support Statement: Unconfirmed Metric '{pct}' in {rule_id}",
+                                        description=f"Rule {rule_id} asserts '{pct}' as confirmed_user_input, but '{pct}' is not present in user constraints or confirmed facts.",
+                                        recommendation="Demote unconfirmed numeric invariants to ai_proposed_assumption or unresolved decision."
+                                    ))
+                                    issues.append(ValidationIssue(
                                         rule_id="VAL-PROV-001",
                                         severity="error",
                                         section_key="business_rules",
@@ -896,13 +938,32 @@ class ValidationService:
                                     score -= 8
                                     break
 
-                        # Canonical provenance verification
+                        # Canonical provenance verification (VAL-PROV-002 / VAL-PROV-001)
+                        if not rule_prov or rule_prov in ["none", "n/a", "null", "unknown"]:
+                            issues.append(ValidationIssue(
+                                rule_id="VAL-PROV-001",
+                                severity="error",
+                                section_key="business_rules",
+                                title=f"Missing Provenance in {rule_id}",
+                                description=f"Rule {rule_id} has no documented provenance.",
+                                recommendation="Provide canonical provenance classification for each rule."
+                            ))
+                            score -= 8
+
                         canonical_provenances = {
                             "user_confirmed", "assignment_required", "reference_supported", "inferred", "proposed", "unresolved",
                             "confirmed_user_input", "user_provided", "assignment_instruction", "explicit_clarification",
                             "clarification_confirmed", "ai_proposed_assumption", "external_reference", "unresolved_decision", "recommendation"
                         }
                         if rule_prov and rule_prov not in canonical_provenances:
+                            issues.append(ValidationIssue(
+                                rule_id="VAL-PROV-002",
+                                severity="error",
+                                section_key="business_rules",
+                                title=f"Non-Canonical Provenance Value '{rule_prov}' in {rule_id}",
+                                description=f"Rule {rule_id} uses unapproved provenance '{rule_prov}'. Must be one of the canonical provenance standards.",
+                                recommendation="Map provenance strictly to one of: USER_CONFIRMED, ASSIGNMENT_REQUIRED, REFERENCE_SUPPORTED, INFERRED, PROPOSED, UNRESOLVED."
+                            ))
                             issues.append(ValidationIssue(
                                 rule_id="VAL-PROV-001",
                                 severity="error",
@@ -913,9 +974,18 @@ class ValidationService:
                             ))
                             score -= 6
 
-                        # 4. Recommendations must NEVER be presented as confirmed requirements
-                        if "recommendation" in rule_prov:
-                            if any(neg in conf_req for neg in ["no", "false", "confirmed"]) or any(firm in rule_stmt.lower() for firm in ["must be strictly enforced", "is mandatory"]):
+                        # 4. Recommendations must NEVER be presented as confirmed requirements (VAL-PROV-004)
+                        if "recommendation" in rule_prov or "inferred" in rule_prov or "proposed" in rule_prov:
+                            is_claimed_confirmed = bool(re.search(r"\b(?:no|false)\b", conf_req))
+                            if is_claimed_confirmed or any(firm in rule_stmt.lower() for firm in ["must be strictly enforced", "is mandatory"]):
+                                issues.append(ValidationIssue(
+                                    rule_id="VAL-PROV-004",
+                                    severity="error",
+                                    section_key="business_rules",
+                                    title=f"AI Inference/Proposal Presented as Confirmed Requirement in {rule_id}",
+                                    description=f"Rule {rule_id} is marked as an inference or proposal but is presented as an approved requirement without requiring stakeholder review.",
+                                    recommendation="Ensure proposals and inferences require stakeholder confirmation and are not treated as firm invariants."
+                                ))
                                 issues.append(ValidationIssue(
                                     rule_id="VAL-ENG-003",
                                     severity="error",
@@ -1127,6 +1197,14 @@ class ValidationService:
                         description="A Mermaid diagram block is unclosed or truncated in mid-generation.",
                         recommendation="Ensure all Mermaid diagram blocks are properly closed with triple backticks and valid syntax."
                     ))
+                    issues.append(ValidationIssue(
+                        rule_id="VAL-DIA-001",
+                        severity="error",
+                        section_key=key,
+                        title="Malformed or Truncated Mermaid Diagram",
+                        description="A Mermaid diagram block is unclosed or truncated in mid-generation.",
+                        recommendation="Ensure all Mermaid diagram blocks are properly closed with triple backticks and valid syntax."
+                    ))
                     score -= 8
                 else:
                     for block in mermaid_blocks:
@@ -1141,9 +1219,17 @@ class ValidationService:
                                 description="Mermaid diagram must begin with a recognized diagram type (sequenceDiagram, flowchart, etc.).",
                                 recommendation="Add 'sequenceDiagram' or 'flowchart TD' at the start of the Mermaid code block."
                             ))
+                            issues.append(ValidationIssue(
+                                rule_id="VAL-DIA-001",
+                                severity="error",
+                                section_key=key,
+                                title="Mermaid Diagram Missing Valid Header Type",
+                                description="Mermaid diagram must begin with a recognized diagram type (sequenceDiagram, flowchart, etc.).",
+                                recommendation="Add 'sequenceDiagram' or 'flowchart TD' at the start of the Mermaid code block."
+                            ))
                             score -= 8
 
-        # VAL-UJ-001: Unsupported Capability or Out-of-Scope Workflow in User Journeys
+        # VAL-SEM-001 / VAL-UJ-001: Unsupported Capability or Out-of-Scope Workflow in User Journeys
         uj_sec = prd_version.sections.get("user_journeys")
         if uj_sec and not uj_sec.is_na:
             uj_content_lower = uj_sec.content.lower()
@@ -1170,7 +1256,17 @@ class ValidationService:
                 "fallback to connect with a live representative",
                 "live representative fallback",
                 "dashboard for ai accuracy",
-                "daily dashboard"
+                "daily dashboard",
+                "billing discrepancy",
+                "view the invoice",
+                "invoice",
+                "did this solve your issue",
+                "final satisfaction feedback",
+                "satisfaction feedback",
+                "queue is full",
+                "marks the interaction as resolved",
+                "wait time estimate",
+                "wait-time"
             ]
             for term in unsupported_journey_terms:
                 if term in uj_content_lower:
@@ -1181,6 +1277,14 @@ class ValidationService:
                         for l in term_lines
                     )
                     if not is_negated:
+                        issues.append(ValidationIssue(
+                            rule_id="VAL-SEM-001",
+                            severity="error",
+                            section_key="user_journeys",
+                            title=f"Unsupported User Journey Action: '{term}'",
+                            description=f"User journey introduces unsupported capability or action '{term}', which is not confirmed by source input.",
+                            recommendation="Remove invented actions (satisfaction prompts, billing workflows, rep editing) from user journeys."
+                        ))
                         issues.append(ValidationIssue(
                             rule_id="VAL-UJ-001",
                             severity="error",
@@ -1382,9 +1486,10 @@ class ValidationService:
                     section_key=conflicting_secs[0],
                     title=f"Contradictory Retention Policy: 24h vs 30d Transcript Storage in {conflicting_secs[0]}",
                     description=f"PRD asserts both 24-hour active session retention and mandatory 30-day transcript retention in section '{conflicting_secs[0]}' without distinguishing active cache TTL from archival policies or marking as an open decision.",
-                    recommendation="Explicitly separate active chat session retention (24 hours) from de-identified analytics/audit archives, or mark long-term retention as an Open Architectural Decision."
+                    recommendation="Explicitly separate active chat session retention from de-identified analytics/audit archives, or mark long-term retention as an Open Architectural Decision."
                 ))
                 score -= 10
+
 
         # VAL-ARCH-001: Unconfirmed Architectural Decision Asserted as Mandatory
         arch_secs = [prd_version.sections.get("non_functional_requirements"), prd_version.sections.get("dependencies_and_constraints")]
@@ -1869,7 +1974,18 @@ class ValidationService:
                 ))
                 score -= 10
             # VAL-HASH-001: Embedded Content Hash Inconsistency
-            if "**SHA-256:**" in doc_text:
+            all_doc_hashes = list(set(re.findall(r"\b([a-f0-9]{64})\b", doc_text)))
+            if len(all_doc_hashes) > 1:
+                issues.append(ValidationIssue(
+                    rule_id="VAL-HASH-001",
+                    severity="error",
+                    section_key="document_information",
+                    title="Conflicting Embedded Content Hashes in Document",
+                    description=f"Multiple conflicting SHA-256 hashes detected in document: {all_doc_hashes}",
+                    recommendation="Remove conflicting self-referential hashes; use authoritative external manifest."
+                ))
+                score -= 10
+            elif "**SHA-256:**" in doc_text:
                 hash_match = re.search(r"\*\*SHA-256:\*\*\s*`([a-f0-9]{64})`", doc_text)
                 if hash_match:
                     embedded_hash = hash_match.group(1)
@@ -1884,12 +2000,20 @@ class ValidationService:
                         ))
                         score -= 10
 
-            # VAL-STAT-001: Document Status vs Validation Outcome Check
+            # VAL-STATUS-001 / VAL-STAT-001: Document Status vs Validation Outcome Check
             doc_status_match = re.search(r"\*\*Status:\*\*\s*([A-Za-z\s]+)", doc_text)
             if doc_status_match:
                 doc_status_str = doc_status_match.group(1).strip().lower()
                 pre_errors = sum(1 for i in issues if i.severity == "error")
                 if "approved" in doc_status_str and (pre_errors > 0 or prd_version.status == "rejected"):
+                    issues.append(ValidationIssue(
+                        rule_id="VAL-STATUS-001",
+                        severity="error",
+                        section_key="document_information",
+                        title="Document Status Contradicts Validation Outcome",
+                        description="Section 1 Document Information asserts 'Approved' status despite presence of validation errors.",
+                        recommendation="Set document status to 'Draft' or 'Rejected' when validation errors are present."
+                    ))
                     issues.append(ValidationIssue(
                         rule_id="VAL-STAT-001",
                         severity="error",
@@ -1897,6 +2021,24 @@ class ValidationService:
                         title="Document Status Contradicts Validation Outcome",
                         description="Section 1 Document Information asserts 'Approved' status despite presence of validation errors.",
                         recommendation="Set document status to 'Draft' or 'Rejected' when validation errors are present."
+                    ))
+                    score -= 10
+                elif prd_version.status == "approved" and any(d in doc_status_str for d in ["draft", "under active review", "under_review"]):
+                    issues.append(ValidationIssue(
+                        rule_id="VAL-STATUS-001",
+                        severity="error",
+                        section_key="document_information",
+                        title="Document Status Mismatch with Authoritative Approved Record",
+                        description=f"Document asserts '{doc_status_match.group(1).strip()}' while version record is marked Approved.",
+                        recommendation="Synchronize document status to 'Approved' upon successful validation approval."
+                    ))
+                    issues.append(ValidationIssue(
+                        rule_id="VAL-STAT-001",
+                        severity="error",
+                        section_key="document_information",
+                        title="Document Status Mismatch with Authoritative Approved Record",
+                        description=f"Document asserts '{doc_status_match.group(1).strip()}' while version record is marked Approved.",
+                        recommendation="Synchronize document status to 'Approved' upon successful validation approval."
                     ))
                     score -= 10
 
@@ -1936,5 +2078,85 @@ class ValidationService:
                 report.id = saved["id"]
             except Exception as e:
                 logger.warning(f"Could not persist validation report: {e}")
+
+        return report
+
+    async def validate_markdown(
+        self,
+        md_content: str,
+        analysis: Optional[AnalysisRecord] = None
+    ) -> ValidationReport:
+        """
+        Parses final rendered Markdown PRD and validates it directly through the validation engine.
+        Detects rendering discrepancies, formatting artifacts, unrendered template tags,
+        and ensures complete semantic and structural consistency.
+        """
+        sections: Dict[str, PRDSectionContent] = {}
+        header_pattern = r"(?m)^##\s+(?:(\d+)\.\s+)?([^\n]+)"
+        splits = list(re.finditer(header_pattern, md_content))
+
+        title_to_key = {title.lower(): key for key, title in SECTION_TITLES.items()}
+        for k in CANONICAL_SECTIONS:
+            title_to_key[k.replace('_', ' ').lower()] = k
+
+        for idx, match in enumerate(splits):
+            raw_title = match.group(2).strip()
+            clean_title = re.sub(r"^\d+\.\s*", "", raw_title).strip()
+            start_pos = match.end()
+            end_pos = splits[idx + 1].start() if idx + 1 < len(splits) else len(md_content)
+            content = md_content[start_pos:end_pos].strip()
+
+            key = None
+            for cand_title, cand_key in title_to_key.items():
+                if cand_title in clean_title.lower() or clean_title.lower() in cand_title:
+                    key = cand_key
+                    break
+
+            if not key:
+                key = re.sub(r"[^a-z0-9]", "_", clean_title.lower()).strip("_")
+
+            is_na = "> *Section marked Not Applicable" in content or "[Not Applicable" in content
+            sections[key] = PRDSectionContent(
+                key=key,
+                title=raw_title,
+                content=content,
+                is_na=is_na
+            )
+
+        # Extract metadata
+        ver_match = re.search(r"\*\*Version:\*\*\s*([^\s\|]+)", md_content)
+        version_number = ver_match.group(1).strip() if ver_match else "v1.0"
+
+        status_match = re.search(r"\*\*Status:\*\*\s*([A-Za-z\s]+)", md_content)
+        status_str = status_match.group(1).strip().lower() if status_match else "draft"
+
+        all_hashes = list(set(re.findall(r"\b([a-f0-9]{64})\b", md_content)))
+
+        temp_version = PRDVersion(
+            prd_id="md-rendered-prd",
+            project_id=analysis.project_id if analysis else "project-md",
+            version_number=version_number,
+            status=status_str,
+            content_hash=all_hashes[0] if all_hashes else None,
+            sections=sections
+        )
+
+        report = await self.validate_version(temp_version, analysis=analysis)
+
+        # Additional markdown-level checks
+        if len(all_hashes) > 1:
+            report.issues.append(ValidationIssue(
+                rule_id="VAL-HASH-001",
+                severity="error",
+                section_key="document_information",
+                title="Conflicting Embedded Hashes in Rendered Document",
+                description=f"Multiple conflicting SHA-256 hashes detected in rendered markdown: {all_hashes}",
+                recommendation="Do not embed self-referential hash; use authoritative external manifest."
+            ))
+            report.error_count += 1
+            report.total_issues += 1
+            report.is_valid = False
+            report.verdict = "REJECTED"
+            report.score = min(report.score, 65)
 
         return report

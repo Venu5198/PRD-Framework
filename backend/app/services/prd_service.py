@@ -1,6 +1,8 @@
 import time
 import asyncio
 import logging
+import re
+import hashlib
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from app.db.repository import (
@@ -308,8 +310,13 @@ class PRDService:
 
         # Compute canonical content hash of the version's sections
         import hashlib
-        canonical_content = "".join(f"## {sections[k].title}\n\n{sections[k].content}\n\n" for k in sorted(sections.keys()))
+        # Synchronize Section 1 Content Hash with authoritative canonical content hash
+        canonical_content = "".join(f"## {sections[k].title}\n\n{sections[k].content}\n\n" for k in sorted(sections.keys()) if k != "document_information")
         content_hash = hashlib.sha256(canonical_content.encode("utf-8")).hexdigest()
+        if "document_information" in sections:
+            doc_info = sections["document_information"].content
+            doc_info = re.sub(r"(\*\*Content Hash \(SHA-256\):\*\*)\s*`[^`]+`", f"\\1 `{content_hash}`", doc_info)
+            sections["document_information"].content = doc_info
 
         # Create immutable version record
         version_data = {
@@ -320,6 +327,7 @@ class PRDService:
             "content_hash": content_hash,
             "status": "draft",
             "sections": {k: v.dict() for k, v in sections.items()},
+            "provenance_ledger": getattr(generator, "last_provenance_ledger", []),
             "changelog": f"Full PRD generation {target_version}",
             "created_at": datetime.utcnow(),
             "created_by": user_id

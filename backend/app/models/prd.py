@@ -1,6 +1,26 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from enum import Enum
+
+class CanonicalProvenance(str, Enum):
+    USER_CONFIRMED = "USER_CONFIRMED"
+    ASSIGNMENT_REQUIRED = "ASSIGNMENT_REQUIRED"
+    REFERENCE_SUPPORTED = "REFERENCE_SUPPORTED"
+    INFERRED = "INFERRED"
+    PROPOSED = "PROPOSED"
+    UNRESOLVED = "UNRESOLVED"
+
+class ProvenanceEntry(BaseModel):
+    statement_id: str
+    section_key: str
+    statement_text: str
+    classification: str
+    source_reference: str
+    source_field: Optional[str] = None
+    related_requirement_id: Optional[str] = None
+    confidence_or_status: Optional[str] = None
+    is_approved_baseline: bool = True
 
 CANONICAL_SECTIONS = [
     "document_information",
@@ -94,8 +114,9 @@ class PRDVersion(BaseModel):
     version_number: str = "v1.0"
     job_id: Optional[str] = None
     content_hash: Optional[str] = None
-    status: str = Field(default="draft", description="'draft', 'approved', 'archived'")
+    status: str = Field(default="draft", description="'draft', 'approved', 'archived', 'rejected', 'under_review'")
     sections: Dict[str, PRDSectionContent] = Field(default_factory=dict)
+    provenance_ledger: List[Dict[str, Any]] = Field(default_factory=list)
     changelog: str = "Initial generation"
     created_at: datetime = Field(default_factory=datetime.utcnow)
     created_by: str = "system"
