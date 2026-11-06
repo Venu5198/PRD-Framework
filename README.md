@@ -58,241 +58,157 @@ Instead of manually writing a PRD from scratch, users provide their product conc
 
 ## 3. Application Screenshots
 
-Screenshots are stored in the repository under:
+The framework provides an end-to-end, visual workspace for transforming ideas into verified Product Requirements Documents. Each interface corresponds to a key stage of the requirements engineering lifecycle.
 
-```text
-docs/
-└── screenshots/
-    ├── 01-dashboard.png
-    ├── 02-submit-idea.png
-    ├── 03-ai-analysis.png
-    ├── 04-clarifications.png
-    ├── 05-prd-document.png
-    ├── 06-requirements-matrix.png
-    ├── 07-quality-validation.png
-    ├── 08-version-history.png
-    └── 09-document-export.png
-```
+### 3.1 Project Dashboard
 
-Add the actual screenshots to these paths. The following sections will display them automatically once the files are committed.
+The dashboard serves as the primary entry point for managing PRD projects. It displays all active workspaces, target business domains, creation timestamps, active PRD identifiers, and quick navigation actions.
 
-### 3.1 Dashboard
+![PRD Framework Project Dashboard](docs/screenshots/01-dashboard.png)
 
-The dashboard is the entry point for accessing and managing PRD projects.
+### 3.2 Product Idea & Context Ingestion
 
-![Application Dashboard](docs/screenshots/01-dashboard.png)
+The idea submission interface accepts raw product concepts, optional problem statements, and academic or enterprise assignment briefs. Users can also attach reference documents (`.pdf`, `.docx`, `.txt`, `.md`, up to 15 MB) to ground downstream generation.
 
-### 3.2 Submit Product Idea
+![Submit Product Idea and Assignment Context](docs/screenshots/02-submit-idea.png)
 
-Users enter a product concept, optional problem statement, assignment constraints, and reference documents.
+### 3.3 AI-Powered Problem & Domain Analysis
 
-![Submit Product Idea](docs/screenshots/02-submit-idea.png)
+The AI analysis engine parses input materials to extract domain classifications, core objectives, target user personas, required capabilities, and explicit constraints. The system strictly separates user-confirmed facts from AI-inferred assumptions.
 
-### 3.3 AI Analysis
+![AI Domain and Input Analysis](docs/screenshots/03-ai-analysis.png)
 
-The AI analyzes the submitted idea and identifies the product domain, objectives, users, capabilities, and missing information.
+### 3.4 Interactive Clarification Engine
 
-![AI Analysis](docs/screenshots/03-ai-analysis.png)
+The clarification engine identifies ambiguities and information gaps in the product concept, generating prioritized questions (`critical`, `medium`, `low`). Users can choose suggested answers, provide custom answers, or explicitly accept documented assumptions.
 
-### 3.4 Clarification Engine
+![Interactive Clarification Engine and Assumption Tracker](docs/screenshots/04-clarifications.png)
 
-The clarification engine asks questions about important missing information.
+### 3.5 Canonical 27-Section PRD Document Viewer
 
-Users can:
-- Select a suggested answer.
-- Enter a custom answer.
-- Save their answer.
-- Accept an assumption where appropriate.
+The document viewer presents the full 27-section PRD in a clean, document-first reading experience (850–950px width) with an interactive table of contents, synchronized Section 1 document metadata (version, status, SHA-256 hash), and inline section editing controls.
 
-Unresolved decisions should remain visible instead of being silently treated as confirmed requirements.
+![Canonical 27-Section PRD Document Viewer](docs/screenshots/05-prd-document.png)
 
-![Clarification Engine](docs/screenshots/04-clarifications.png)
+### 3.6 Requirements & Traceability Matrix
 
-### 3.5 PRD Document
+The requirements matrix enforces bidirectional traceability across all functional requirements (`FR-xxx`), non-functional requirements (`NFR-xxx`), and business rules (`BR-xxx`), linking each requirement directly to its acceptance criteria (`AC-xxx`) and provenance source.
 
-The generated PRD is presented as a structured document with a section outline.
+![Requirements and Traceability Matrix](docs/screenshots/06-requirements-matrix.png)
 
-Users can inspect the generated content and review the document before approval.
+### 3.7 Deterministic Quality Validation
 
-![PRD Document](docs/screenshots/05-prd-document.png)
+The quality validation engine audits generated PRDs across 10 quality dimensions (structural completeness, provenance grounding, semantic entailment, numerical SLAs, and security governance). It reports a deterministic 0–100 quality score, blocking error warnings, and actionable recommendations.
 
-### 3.6 Requirements Matrix
+![Deterministic Quality Validation Results and Findings](docs/screenshots/07-quality-validation.png)
 
-The requirements matrix provides stable identifiers and traceability across functional requirements, acceptance criteria, and business rules.
+### 3.8 Version History & Immutability
 
-![Requirements Matrix](docs/screenshots/06-requirements-matrix.png)
+The version management drawer tracks document revisions without destructive overwrites. Approved versions are locked as immutable, with manual edits creating tracked minor revisions (`v1.1`, `v1.2`) and full regenerations allocating major revisions (`v2.0`).
 
-### 3.7 Quality Validation
+![PRD Version History and Lifecycle Management](docs/screenshots/08-version-history.png)
 
-The validation stage checks the generated document and presents its quality score and findings.
+### 3.9 Multi-Format Document Export
 
-A high score must not be treated as proof that every requirement is factually supported. Review critical findings and unresolved claims before approval.
+The export engine delivers publication-grade exports in Markdown (`.md`), Microsoft Word (`.docx`), and Adobe PDF (`.pdf`), preserving table structures, running headers, page geometry, and cryptographic metadata hashes across all formats.
 
-![Quality Validation](docs/screenshots/07-quality-validation.png)
-
-### 3.8 Version History
-
-Version management helps users track document changes without silently overwriting previous versions.
-
-![Version History](docs/screenshots/08-version-history.png)
-
-### 3.9 Document Export
-
-The framework supports exporting PRDs into Markdown, Word, and PDF formats.
-
-![Document Export](docs/screenshots/09-document-export.png)
+![PRD Document Details and Multi-Format Export](docs/screenshots/09-document-export.png)
 
 ---
 
 ## 4. End-to-End Application Workflow
 
-Follow these steps to generate and review a PRD.
+Follow this 10-step engineering workflow to transform an initial product concept into an approved, exportable PRD.
 
-### Step 1: Create a PRD Project
+### Step 1: Create or Open a PRD Project
 
-1. Open the application.
-2. Navigate to the dashboard.
-3. Create a new PRD project.
-4. Enter the project name.
-5. Open the project.
+* **UI Location:** Application Dashboard ([Screenshot 3.1](docs/screenshots/01-dashboard.png))
+* **Action:**
+  1. Open the application at `http://localhost:3000`.
+  2. In the dashboard, enter a project title (e.g., `AI Customer Support Suite`) and an optional target domain.
+  3. Click **Create Project** or click **Open Project** on an existing project card.
+* **Verification Check:** Confirm that the project workspace opens with the project title displayed in the top navigation bar.
 
-### Step 2: Submit the Product Idea
+### Step 2: Submit the Product Idea or Assignment
 
-Navigate to **1. Submit Idea**.
+* **UI Location:** Workspace Tab **1. Submit Idea** ([Screenshot 3.2](docs/screenshots/02-submit-idea.png))
+* **Action:**
+  1. Enter the raw product idea or concept in the **Product Idea / Concept** field.
+  2. (Optional) Enter the specific problem definition in **Problem Statement**.
+  3. (Optional) Provide assignment context, deliverables, or course constraints in **Assignment Context**.
+  4. (Optional) Upload supporting reference files (`.pdf`, `.docx`, `.txt`, `.md`).
+  5. Click **Submit & Analyze Idea**.
+* **Verification Check:** Ensure the submission status indicator reports success and the application automatically transitions to Stage 2.
 
-Provide:
+### Step 3: Run AI Analysis
 
-- Product idea or concept.
-- Problem statement, if available.
-- Assignment context or constraints, if applicable.
-- Reference documents, if available.
+* **UI Location:** Workspace Tab **2. AI Analysis** ([Screenshot 3.3](docs/screenshots/03-ai-analysis.png))
+* **Action:**
+  1. Review the extracted problem domain, primary objectives, target user personas, and core capabilities.
+  2. Inspect the **Verified Facts vs. Assumptions** section.
+* **Verification Check:** Verify that user-provided facts are correctly classified as `USER_CONFIRMED` and that AI suggestions are explicitly marked as `INFERRED` rather than accepted as facts.
 
-Example:
+### Step 4: Review Clarifications
 
-```text
-Build a no-code workflow automation platform.
+* **UI Location:** Workspace Tab **3. Clarifications** ([Screenshot 3.4](docs/screenshots/04-clarifications.png))
+* **Action:**
+  1. Inspect the prioritized clarification questions generated by the clarification engine.
+  2. Review the architectural and business impact note attached to each question.
+* **Verification Check:** Identify any critical ambiguities regarding technology stacks, integration partners, authentication models, or SLA targets before providing answers.
 
-Users should describe an automation in natural language
-and generate a visual workflow with triggers, actions,
-conditions, and integrations.
-```
+### Step 5: Answer Questions or Explicitly Accept Assumptions
 
-Click **Submit & Analyze Idea**.
+* **UI Location:** Workspace Tab **3. Clarifications** ([Screenshot 3.4](docs/screenshots/04-clarifications.png))
+* **Action:**
+  1. For each question, select one of the suggested answers or type a custom answer in the response field.
+  2. Click **Save Answer**.
+  3. If an architectural decision is intentionally deferred, click **Accept Assumption** to record the documented rationale.
+* **Verification Check:** Confirm that all questions with `critical` impact have either a confirmed user answer or an explicit documented assumption. Do not leave unknown commitments ambiguous.
 
-### Step 3: Review AI Analysis
+### Step 6: Generate the PRD
 
-Navigate to **2. AI Analysis**.
+* **UI Location:** Workspace Tab **4. PRD Document**
+* **Action:**
+  1. Click **Generate 27-Section PRD**.
+  2. The system queues a background synthesis job and begins allocating an immutable semantic version (e.g., `v1.0`).
+  3. Monitor progress through the 6 pipeline stages: Input Analysis, Requirements Engineering, Stakeholder Analysis, Business Rules, Risk Analysis, and 27-Section Assembly.
+* **Verification Check:** Confirm that generation completes successfully, progress reaches 100%, and the full document renders in the workspace.
 
-Review the extracted information:
+### Step 7: Review the PRD Document
 
-- Product domain.
-- Problem definition.
-- Product objectives.
-- Target users.
-- Core capabilities.
-- Missing information.
-- Identified assumptions.
+* **UI Location:** Workspace Tab **4. PRD Document** ([Screenshot 3.5](docs/screenshots/05-prd-document.png))
+* **Action:**
+  1. Review the document sequentially using the left-hand Table of Contents outline.
+  2. Verify critical sections: Document Information, Executive Summary, Scope & Out of Scope, Functional Requirements, Non-Functional Requirements, Business Rules, System Workflows, Security & Privacy, Acceptance Criteria, and Risks & Mitigation.
+  3. (Optional) Use **Edit Section** to modify content or **Regenerate** to refine a section with additional guidance.
+* **Verification Check:** Ensure no placeholder strings (`[TBD]`, `TODO`, `N/A without rationale`) exist and that Section 1 displays a valid SHA-256 Content Hash.
 
-Do not treat AI-generated suggestions as user-confirmed facts.
+### Step 8: Inspect the Requirements and Traceability Matrix
 
-### Step 4: Answer Clarification Questions
+* **UI Location:** Workspace Tab **5. Requirements Matrix** ([Screenshot 3.6](docs/screenshots/06-requirements-matrix.png))
+* **Action:**
+  1. Review the list of functional requirements (`FR-001`+), non-functional requirements (`NFR-001`+), and business rules (`BR-001`+).
+  2. Inspect the linked acceptance criteria (`AC-001`+) and priority classifications (`Must Have`, `Should Have`, `Could Have`).
+  3. Check the provenance origin tag for every requirement.
+* **Verification Check:** Confirm that every functional requirement has at least one mapped acceptance criterion and that no requirement is marked `USER_CONFIRMED` unless explicitly verified by user input.
 
-Navigate to **3. Clarifications**.
+### Step 9: Run Quality Validation
 
-The clarification engine generates questions based on missing information.
+* **UI Location:** Workspace Tab **6. Quality Validation** ([Screenshot 3.7](docs/screenshots/07-quality-validation.png))
+* **Action:**
+  1. Inspect the overall validation score (0–100) and findings breakdown across all 10 quality dimensions.
+  2. Review any blocking errors, warnings, or style suggestions.
+  3. If blocking errors are detected, use the section editor to resolve them and re-run validation.
+* **Verification Check:** Confirm that blocking errors equal zero and the verdict is `APPROVED` or `UNDER_REVIEW`. Never approve a document solely on a high numerical score if unresolved semantic contradictions remain.
 
-For each question:
+### Step 10: Review Versions and Export the Document
 
-1. Read the question and its impact.
-2. Review suggested answers.
-3. Enter your own answer where necessary.
-4. Click **Save Answer**.
-5. Use **Accept Assumption** only when you explicitly accept the proposed assumption.
-
-Important: If an architectural decision, business rule, security requirement, or numerical target is unknown, keep it unresolved or mark it as a proposal. Do not invent a commitment just to complete the PRD.
-
-### Step 5: Generate the PRD
-
-Click **Generate 27-Section PRD**.
-
-The framework generates the structured PRD using the submitted information, clarification answers, and documented assumptions.
-
-### Step 6: Review the PRD Document
-
-Navigate to **4. PRD Document**.
-
-Review the complete document section by section.
-
-Pay particular attention to:
-
-- Executive summary.
-- Problem statement.
-- Product objectives.
-- Scope and exclusions.
-- User personas.
-- User stories.
-- Functional requirements.
-- Non-functional requirements.
-- Business rules.
-- User journeys.
-- Security and privacy.
-- Architecture constraints.
-- Acceptance criteria.
-- Risks and assumptions.
-
-Check that the document does not introduce functionality, integrations, technologies, security controls, or performance targets that were never confirmed or explicitly proposed.
-
-### Step 7: Review the Requirements Matrix
-
-Navigate to **5. Requirements Matrix**.
-
-Verify:
-
-- Functional requirement IDs are unique.
-- Non-functional requirement IDs are unique.
-- Business rule IDs are unique.
-- Acceptance criteria reference valid requirements.
-- Requirements have traceable sources.
-- Priority classifications are justified.
-- Proposed and unresolved items are not presented as confirmed requirements.
-
-### Step 8: Run Quality Validation
-
-Navigate to **6. Quality Validation**.
-
-Run validation and inspect the findings.
-
-Do not approve a PRD based only on its numerical quality score.
-
-Review:
-- Structural errors.
-- Missing sections.
-- Unsupported requirements.
-- Contradictions.
-- Missing traceability.
-- Unsupported numerical commitments.
-- Invalid acceptance criteria.
-- Unresolved high-impact decisions.
-
-Resolve critical findings before approval.
-
-### Step 9: Approve the PRD Version
-
-After reviewing the document and validation findings, use **Approve Version** when the PRD is ready.
-
-Approval should represent an intentional review decision, not merely a successful generation operation.
-
-### Step 10: Manage Versions and Export
-
-Use the version management functionality to inspect previous versions and create new revisions.
-
-Export the reviewed document in the required format:
-
-- Markdown (`.md`)
-- Microsoft Word (`.docx`)
-- PDF (`.pdf`)
-
-Always inspect exported files. A document that looks correct in the application may have formatting issues in PDF or DOCX.
+* **UI Location:** Workspace Tab **7. Versions** & Document Toolbar ([Screenshots 3.8 & 3.9](docs/screenshots/09-document-export.png))
+* **Action:**
+  1. Click **Approve Version** to transition the verified PRD from `Under Review` to `Approved` (locking the version as immutable).
+  2. Inspect the version history drawer to review prior revisions and changelogs.
+  3. Use the export toolbar buttons to download the approved PRD in **Markdown (.md)**, **Microsoft Word (.docx)**, or **Adobe PDF (.pdf)** format.
+* **Verification Check:** Open and inspect the exported file. Confirm table borders, column widths, running headers, footers, and page numbers render cleanly without text truncation.
 
 ---
 
