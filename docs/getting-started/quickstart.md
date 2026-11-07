@@ -121,4 +121,3 @@ npm --prefix frontend run test -- --run
 # Run frontend production build
 npm --prefix frontend run build
 ```
-
