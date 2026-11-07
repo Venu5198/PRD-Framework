@@ -236,6 +236,10 @@ PRD-Framework/
 ├── docker-compose.yml
 ├── pytest.ini
 │
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+│
 ├── backend/
 │   ├── app/
 │   ├── tests/
@@ -250,25 +254,31 @@ PRD-Framework/
 │   └── Dockerfile
 │
 ├── docs/
+│   ├── getting-started/
+│   │   ├── quickstart.md
+│   │   └── prd-specification.md
 │   ├── architecture/
 │   │   ├── ARCHITECTURE.md
 │   │   ├── HLD.md
 │   │   ├── LLD.md
 │   │   ├── ASYNC_JOB_ARCHITECTURE.md
 │   │   └── PRD_ENGINEERING_V2_DATA_FLOW.md
-│   ├── user-guide/
-│   │   └── PRD.md
 │   ├── development/
-│   │   ├── SECURITY.md
-│   │   ├── TEST_STRATEGY.md
+│   │   └── SECURITY.md
+│   ├── testing/
+│   │   └── TEST_STRATEGY.md
+│   ├── reports/
 │   │   ├── PDF_FORMATTING_REPAIR_REPORT.md
 │   │   └── UNIFIED_PRD_FORMATTING_REPORT.md
 │   ├── screenshots/
 │   │   └── 01-dashboard.png ... 09-document-export.png
 │   ├── examples/
 │   │   └── customer_support_prd_example.md
-│   └── archive/phase-reports/
-│       └── [historical phase reports & milestone validation artifacts]
+│   ├── archive/
+│   │   └── phase-reports/
+│   │       └── [historical phase reports & milestone validation artifacts]
+│   └── benchmark/
+│       └── [benchmark PRD fixtures & results]
 │
 ├── scripts/
 └── tests/

@@ -114,24 +114,33 @@ def main():
             shutil.move(src, ROOT / "docs" / "architecture" / af)
             print(f"Moved architecture doc: {af}")
 
-    # 6. Move development guides to docs/development/
-    dev_files = [
-        "SECURITY.md",
-        "TEST_STRATEGY.md",
-        "PDF_FORMATTING_REPAIR_REPORT.md",
-        "UNIFIED_PRD_FORMATTING_REPORT.md",
-    ]
+    # 6. Move development, testing, reports, and getting-started guides
+    dev_files = ["SECURITY.md"]
     for df in dev_files:
         src = docs_dir / df
         if src.exists():
             shutil.move(src, ROOT / "docs" / "development" / df)
             print(f"Moved development guide: {df}")
 
-    # 7. Move user guide to docs/user-guide/
+    test_files = ["TEST_STRATEGY.md"]
+    for tf in test_files:
+        src = docs_dir / tf
+        if src.exists():
+            shutil.move(src, ROOT / "docs" / "testing" / tf)
+            print(f"Moved testing guide: {tf}")
+
+    report_files = ["PDF_FORMATTING_REPAIR_REPORT.md", "UNIFIED_PRD_FORMATTING_REPORT.md"]
+    for rf in report_files:
+        src = docs_dir / rf
+        if src.exists():
+            shutil.move(src, ROOT / "docs" / "reports" / rf)
+            print(f"Moved report: {rf}")
+
+    # 7. Move specification to docs/getting-started/
     prd_src = docs_dir / "PRD.md"
     if prd_src.exists():
-        shutil.move(prd_src, ROOT / "docs" / "user-guide" / "PRD.md")
-        print("Moved user-guide doc: PRD.md")
+        shutil.move(prd_src, ROOT / "docs" / "getting-started" / "prd-specification.md")
+        print("Moved PRD specification to docs/getting-started/prd-specification.md")
 
     # 8. Remove duplicate and temporary files from root
     root_to_remove = [
